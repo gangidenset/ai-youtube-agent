@@ -77,12 +77,12 @@ interface Renderer {             // FFmpeg 実装
 
 ## Video
 
-候補（2026-10 時点。**価格・仕様は導入時に公式ドキュメントで再確認する**）:
+**採用: Kling 3.0 Standard（ADR-002）**。他の Provider は将来のフォールバック候補（2026-10 時点の参考値。**価格・仕様は導入時に公式ドキュメントで再確認する**）:
 
 | Provider | 特徴 | 1 クリップ | 概算単価 | 備考 |
 |------|------|------|------|------|
 | Google Veo（Gemini API / Vertex AI） | 高品質、音声付き生成可、縦型対応 | 〜8 秒 | $0.15〜$0.75 / 秒（モデル・音声有無で変動） | SynthID 透かし。安全フィルタ厳しめ |
-| Kling | コスパ良、image-to-video | 5〜10 秒 | $0.05〜$0.20 / 秒相当 | API 提供形態・リージョン要確認 |
+| **Kling 3.0 Standard（採用）** | コスパ良、text/image-to-video | 5〜10 秒（要確認） | 720p 音声なし 約 $0.084 / 秒、1080p 音声なし 約 $0.112 / 秒（公式 API の第三者報告値） | Access Key + Secret Key → JWT。音声なしで生成する |
 | Runway（Gen-4 系） | API 成熟、image-to-video | 5〜10 秒 | $0.05〜$0.15 / 秒相当（クレジット制） | |
 | その他（Luma, Pika, MiniMax 等） | Provider 追加で対応 | | | |
 
@@ -97,13 +97,14 @@ interface Renderer {             // FFmpeg 実装
 
 ## TTS
 
+**採用: Google Cloud TTS（ADR-003）**
+
 | Provider | 特徴 | 概算単価 |
 |------|------|------|
-| ElevenLabs | 日本語の自然さ、多数の声、word timestamps | 約 $0.10〜$0.30 / 1,000 文字（プラン依存） |
-| Google Cloud TTS | 低価格・安定、日本語ボイス多数 | 約 $0.004〜$0.03 / 1,000 文字 |
-| OpenAI TTS 等 | Provider 追加で対応 | |
+| **Google Cloud TTS（採用）** | 低価格・安定、日本語ボイス多数 | Chirp 3: HD $30 / 100 万文字、WaveNet・Standard $4 / 100 万文字（月ごとの無料枠あり） |
+| ElevenLabs（将来候補） | 日本語の自然さ、多数の声、word timestamps | 約 $0.10〜$0.30 / 1,000 文字（プラン依存） |
 
-字幕タイミングは TTS の word timings を優先、なければ文字数比例で割当。
+既定の音声は `ja-JP` の Chirp 3: HD 系。字幕タイミングは SSML `<mark>` の timepoint を優先し、取得できない音声タイプは文字数比例で割り当てる。
 
 ## Storage
 

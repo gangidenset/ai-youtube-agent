@@ -4,9 +4,8 @@ Claude を「AI 動画ディレクター兼 AI オーケストレーター」と
 **市場分析 → 企画 → 台本 → 動画生成 → 編集 → AI 品質チェック → 人間承認 → 投稿 → 投稿後分析 → 改善**
 を自動化するプラットフォームです。担当者は制作条件を設定し、最終承認だけを行います。
 
-> **現在のステータス: Phase 0（設計レビュー中）**
-> まだアプリケーションコードはありません。[設計提案書](./docs/design-proposal.md) の承認後に Phase 1 の実装を開始します。
-> 以下のセットアップ手順は Phase 1 完了時点で有効になる予定の手順です。
+> **現在のステータス: Phase 1（MVP）実装中**
+> 設計は [設計提案書](./docs/design-proposal.md) と [意思決定ログ](./docs/decisions.md) を参照してください。
 
 ## ドキュメント
 
@@ -22,6 +21,7 @@ Claude を「AI 動画ディレクター兼 AI オーケストレーター」と
 | [docs/security.md](./docs/security.md) | Secret 管理・認証・脆弱性対策・AI 固有リスク |
 | [docs/cost-management.md](./docs/cost-management.md) | コスト記録・予算ガード・試算 |
 | [docs/deployment.md](./docs/deployment.md) | 環境・CI/CD・GitHub 開発フロー |
+| [docs/decisions.md](./docs/decisions.md) | 意思決定ログ（ADR） |
 
 ## システム構成
 
@@ -95,8 +95,8 @@ pnpm dev
 | `YOUTUBE_API_KEY` | ✔（mock 時は不要） | YouTube Data API v3（読取） |
 | `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` | Phase 3 | YouTube 投稿用 OAuth |
 | `S3_*` | Phase 2 | ストレージ |
-| `GEMINI_API_KEY` / `RUNWAY_API_KEY` / `KLING_*` | Phase 2 | 動画生成 |
-| `ELEVENLABS_API_KEY` / `GOOGLE_TTS_CREDENTIALS` | Phase 2 | TTS |
+| `KLING_ACCESS_KEY` / `KLING_SECRET_KEY` | Phase 2 | 動画生成（Kling 3.0） |
+| `GOOGLE_TTS_CREDENTIALS` | Phase 2 | Google Cloud TTS（サービスアカウント JSON を base64 で） |
 | `MAIL_API_KEY` | | 承認依頼メール |
 
 ## API 設定

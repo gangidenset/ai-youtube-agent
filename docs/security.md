@@ -17,8 +17,8 @@
 | `SESSION_SECRET` | Cookie 署名 | 同上 | 年 1 回 |
 | `DATABASE_URL` / `REDIS_URL` | 接続 | 同上 | 事業者に依存 |
 | `S3_*` | ストレージ（バケット単位の最小権限キー） | 同上 | 90 日 |
-| `GEMINI_API_KEY` / `KLING_*` / `RUNWAY_API_KEY` | 動画生成 | 同上 | 90 日 |
-| `ELEVENLABS_API_KEY` / `GOOGLE_TTS_*` | TTS | 同上 | 90 日 |
+| `KLING_ACCESS_KEY` / `KLING_SECRET_KEY` | 動画生成（Kling 3.0） | 同上 | 90 日 |
+| `GOOGLE_TTS_CREDENTIALS` | TTS（Google Cloud TTS サービスアカウント、TTS 権限のみ） | 同上 | 90 日 |
 | `MAIL_API_KEY` | 通知メール | 同上 | 90 日 |
 
 - `.env` は `.gitignore` 済み。リポジトリには `.env.example`（値なし）のみ。

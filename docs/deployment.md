@@ -19,7 +19,7 @@
 
 | 案 | 長所 | 短所 |
 |------|------|------|
-| **A. コンテナ PaaS（Render / Railway / Fly.io）** ← MVP 推奨 | 設定が簡単、Background Worker・マネージド DB/Redis あり、月 $40〜 | 大規模化で割高 |
+| **A. コンテナ PaaS（Render / Railway / Fly.io）** ← **採用（Render を第一候補、ADR-004）** | 設定が簡単、Background Worker・マネージド DB/Redis あり、月 $40〜 | 大規模化で割高 |
 | B. AWS（ECS Fargate + RDS + ElastiCache） | スケール・IAM・ネットワーク分離 | 構築・運用コスト |
 | C. Vercel（web）+ 他（api/worker） | web の配信が快適 | 2 事業者管理、Cookie ドメイン設計が必要 |
 

@@ -1,6 +1,6 @@
 # 設計提案書（Phase 0）
 
-> ステータス: **レビュー待ち**（本書の承認後に Phase 1 の実装を開始する）
+> ステータス: **承認済み（2026-10-29）** — Phase 1 実装中。決定事項は [decisions.md](./decisions.md)
 > 作成日: 2026-10-29
 > 対象: AI YouTube Agent（YouTube Shorts 中心の企画〜投稿〜分析自動化プラットフォーム）
 
@@ -55,8 +55,8 @@ flowchart LR
   subgraph External["外部サービス（Adapter 経由）"]
     CL[Anthropic API<br/>Claude]
     YT[YouTube Data API v3<br/>YouTube Analytics API]
-    VG[Video Provider<br/>Veo / Kling / Runway…]
-    TTS[TTS Provider<br/>ElevenLabs / Google…]
+    VG[Video Provider<br/>Kling 3.0（第一候補）]
+    TTS[TTS Provider<br/>Google Cloud TTS]
   end
 
   UI -- HTTPS / Cookie Session --> API
@@ -98,7 +98,7 @@ flowchart LR
 | Storage | **S3 互換（本番: Cloudflare R2 推奨 / 開発: MinIO）** | 動画の配信・ダウンロードでエグレス料金がかからない |
 | 認証 | **自前セッション認証（argon2id + DB セッション + httpOnly Cookie）** | 外部 IdP 不要で MVP に十分。将来 OAuth/SSO を追加可能 |
 | テスト | **Vitest + Playwright（E2E は Phase 1 後半）** | |
-| インフラ | **Docker / docker compose（開発） → コンテナ PaaS（本番）** | FFmpeg と長時間ジョブがあるため Serverless 不適 |
+| インフラ | **Docker / docker compose（開発） → Render（本番 MVP、ADR-004）** | FFmpeg と長時間ジョブがあるため Serverless 不適 |
 | CI | **GitHub Actions** | Lint / Typecheck / Test / Build / Security（CodeQL, gitleaks, audit） |
 
 詳細な比較は [architecture.md](./architecture.md#技術選定と理由)。
@@ -249,8 +249,8 @@ Claude の判断出力（構造化出力で強制）:
 | YouTube Data API v3 | 市場データ収集・投稿・統計 | 1（読取）/ 3（投稿） |
 | Google OAuth 2.0 | YouTube チャンネル連携 | 1（読取用は API Key で可）/ 3 |
 | YouTube Analytics API | 自チャンネルの視聴維持率・視聴時間・推定収益 | 4 |
-| 動画生成（Veo / Kling / Runway のいずれか） | シーン動画生成 | 2 |
-| TTS（ElevenLabs / Google Cloud TTS 等） | ナレーション | 2 |
+| 動画生成（**Kling 3.0 Standard**、ADR-002） | シーン動画生成 | 2 |
+| TTS（**Google Cloud TTS**、ADR-003） | ナレーション | 2 |
 | S3 互換ストレージ（Cloudflare R2） | 素材・完成動画・サムネイル | 2（Phase 1 はメタデータのみ） |
 | PostgreSQL / Redis（マネージド） | DB / Queue | 1 |
 | メール送信（Resend 等）/ Web Push | 承認依頼通知 | 1（メール）/ 6（Push） |
@@ -269,8 +269,8 @@ Claude の判断出力（構造化出力で強制）:
 | `SESSION_SECRET` | 自前生成 | 1 |
 | `DATABASE_URL` / `REDIS_URL` | DB / Redis 事業者 | 1 |
 | `S3_ENDPOINT` / `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` / `S3_BUCKET` | Cloudflare R2 等 | 2 |
-| `VIDEO_PROVIDER_*_API_KEY`（例: `GEMINI_API_KEY`, `KLING_*`, `RUNWAY_API_KEY`） | 各社 | 2 |
-| `TTS_PROVIDER_*_API_KEY`（例: `ELEVENLABS_API_KEY`） | 各社 | 2 |
+| `KLING_ACCESS_KEY` / `KLING_SECRET_KEY` | Kling 開発者コンソール | 2 |
+| `GOOGLE_TTS_CREDENTIALS` | Google Cloud（Text-to-Speech API を有効化したサービスアカウント） | 2 |
 | `MAIL_API_KEY` | Resend 等 | 1 |
 
 ## 10. 月額ランニングコスト概算
@@ -280,13 +280,13 @@ Claude の判断出力（構造化出力で強制）:
 | 項目 | 月額概算 | 備考 |
 |------|------|------|
 | Claude API | **$40〜$90** | 1 本あたり約 $0.6〜$1.2（Opus 5.5: 入力 $4 / 出力 $20 per 1M tokens）＋ 市場分析・学習。プロンプトキャッシュ・Batch API（50% off）で削減 |
-| 動画生成 API | **$300〜$1,200** | 30 秒 × 60 本 = 1,800 秒。$0.15〜$0.50/秒 × 再生成率 1.3 倍。**最大のコスト要因** |
-| TTS | **$5〜$30** | 約 300 文字/本 |
+| 動画生成 API（Kling 3.0 Standard・音声なし） | **$200〜$270** | 30 秒 × 60 本 × 再生成率 1.3 ≒ 2,340 秒。$0.084/秒（720p）〜$0.112/秒（1080p）。**最大のコスト要因**（単価は契約時に要確認） |
+| TTS（Google Cloud TTS） | **$0〜$5** | 約 300 文字/本 × 60 = 約 2 万文字。Chirp 3: HD の無料枠（100 万文字/月）内 |
 | YouTube API | **$0** | 無料（クォータ制） |
-| インフラ（Web/API/Worker/DB/Redis） | **$40〜$100** | コンテナ PaaS + マネージド Postgres/Redis |
+| インフラ（Render: web/api/worker + Postgres + Key Value） | **$40〜$100** | |
 | ストレージ（R2） | **$1〜$5** | 1 本 50〜100MB、エグレス無料 |
 | メール等 | **$0〜$20** | |
-| **合計** | **約 $390〜$1,450 / 月** | Phase 1（動画生成なし）のみなら **約 $60〜$150 / 月** |
+| **合計** | **約 $280〜$490 / 月** | Phase 1（動画生成なし）のみなら **約 $60〜$150 / 月** |
 
 初期費用: 開発者の工数を除き **ほぼ $0**（ドメイン・各 API のデポジット程度）。
 詳細とコスト上限（予算ガード）設計は [cost-management.md](./cost-management.md)。
@@ -390,15 +390,21 @@ Issue 作成（テンプレート） → Claude が Issue を読み方針をコ�
 
 ---
 
-## レビューで決めていただきたい事項
+## 決定事項（2026-10-29）
 
-1. **最初に統合する動画生成 Provider**（Phase 2）: Veo（Google）/ Kling / Runway のどれを第一候補にするか。
-2. **TTS Provider**: 日本語品質重視なら ElevenLabs、コスト重視なら Google Cloud TTS。
-3. **本番ホスティング**: コンテナ PaaS（Render / Railway / Fly.io）か、AWS（ECS + RDS）か。
-4. **動画の言語・地域**: 日本語 / 日本市場を既定とする想定で良いか。
-5. **企画選択ゲート**: 企画 A/B/C を毎回人間が選ぶか、Trend Score 上位を自動選択する設定を初期から用意するか。
+| # | 項目 | 決定 |
+|---|------|------|
+| 1 | 動画生成 Provider | **Kling 3.0 Standard**（ADR-002） |
+| 2 | TTS | **Google Cloud TTS**（ADR-003） |
+| 3 | ホスティング | **Render 等のコンテナ PaaS で MVP**（ADR-004） |
+| 4 | 言語・市場 | **日本語・日本市場を既定**（ADR-005） |
+| 5 | 企画選択 | **Trend Score 最高案を自動採用（`AUTO_TOP`）。手動選択モードも残す**（ADR-006） |
 
-承認いただけたら、Phase 1 を以下の Issue 単位で順に実装します（各 Issue = 1 PR）。
+詳細は [decisions.md](./decisions.md)。
+
+## Phase 1 の Issue
+
+Phase 1 は以下の Issue 単位で順に実装する。
 
 1. Monorepo 基盤（pnpm / Turborepo / TS / ESLint / Prettier / Vitest）+ GitHub Actions CI
 2. docker compose（Postgres / Redis / MinIO）+ `packages/config`（環境変数検証）
@@ -408,7 +414,7 @@ Issue 作成（テンプレート） → Claude が Issue を読み方針をコ�
 6. ClaudeProvider（構造化出力・コスト記録・リトライ・プロンプトキャッシュ）+ 監査ログ
 7. YouTubeProvider（検索・統計・クォータ管理・キャッシュ）+ 市場分析ジョブ
 8. Trend Score / Originality Score 計算 + トレンド分析ジョブ
-9. 企画生成 + 選択 API / UI
+9. 企画生成 + 自動採用（`AUTO_TOP`）/ 手動選択 API・UI
 10. 台本生成 + 修正（バージョン管理）
 11. 承認画面（台本承認モード・スマホ対応）
 12. ダッシュボード（今日 / コスト）

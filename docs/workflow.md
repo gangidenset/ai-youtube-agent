@@ -16,7 +16,7 @@ stateDiagram-v2
     MARKET_RESEARCH --> TREND_ANALYSIS
     TREND_ANALYSIS --> IDEA_GENERATION
     IDEA_GENERATION --> WAITING_IDEA_SELECTION
-    WAITING_IDEA_SELECTION --> [*]: 企画選択 → Project 作成
+    WAITING_IDEA_SELECTION --> [*]: 自動採用 or 手動選択 → Project 作成
   }
   state VideoProject {
     [*] --> SCRIPT_GENERATION
@@ -50,7 +50,7 @@ Phase 1 では `SCRIPT_GENERATION → WAITING_APPROVAL`（台本承認モード�
 | MARKET_RESEARCH | YouTube データ収集 | `market_research` | — | クォータ不足 → `PAUSED(QUOTA)`、翌日自動再開 |
 | TREND_ANALYSIS | Claude 分析 + Trend Score | `trend_analysis` | — | Retry → `FAILED` |
 | IDEA_GENERATION | A/B/C 案 + Originality | `generate_idea` | — | Retry |
-| WAITING_IDEA_SELECTION | 担当者が選択（`AUTO_TOP` 設定時はスキップ） | — | ✔ | 期限切れで通知 |
+| WAITING_IDEA_SELECTION | 既定 `AUTO_TOP`: 条件を満たす案のうち Trend Score 最高案を自動採用して通過。`MANUAL`、または条件を満たす案がない場合は担当者の選択を待つ（ADR-006） | — | `MANUAL` 時 ✔ | 期限切れで通知 |
 | SCRIPT_GENERATION | 台本 JSON 生成・Zod 検証 | `generate_script` | — | Schema 不一致は再要求（最大 2 回） |
 | VIDEO_GENERATION | シーン毎に生成・ポーリング・DL | `generate_video` | — | Retry 3 → 別 Provider → 通知 |
 | VOICE_GENERATION | ナレーション生成 | `generate_voice` | — | Retry 3 → 別 Provider |

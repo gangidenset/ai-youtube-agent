@@ -64,7 +64,7 @@ erDiagram
 | テーブル | 主要カラム |
 |------|------|
 | `channels` | name, youtube_channel_id, platform (`YOUTUBE`), default_format, status |
-| `channel_settings` | genre, sub_genres[], target_audience, tone, language (`ja`), region (`JP`), default_duration_sec, ng_words[], brand_guidelines (text), preferred_video_provider, preferred_tts_provider, voice_id, idea_selection_mode (`MANUAL`/`AUTO_TOP`), auto_publish_enabled (default false), auto_publish_thresholds (jsonb), daily_budget_usd, monthly_budget_usd, per_video_budget_usd |
+| `channel_settings` | genre, sub_genres[], target_audience, tone, language（既定 `ja`）, region（既定 `JP`）, default_duration_sec, ng_words[], brand_guidelines (text), preferred_video_provider, preferred_tts_provider, voice_id, idea_selection_mode (`AUTO_TOP`（既定）/`MANUAL`), auto_publish_enabled (default false), auto_publish_thresholds (jsonb), daily_budget_usd, monthly_budget_usd, per_video_budget_usd |
 | `api_credentials` | channel_id, provider (`YOUTUBE_OAUTH` 等), encrypted_payload (bytea, AES-256-GCM), key_version, scopes[], expires_at, revoked_at ※平文は保存しない |
 
 ### 市場分析
