@@ -68,7 +68,7 @@ erDiagram
 |------|------|
 | `channels` | name（発信ブランド単位。複数 SNS アカウントを束ねる）, status ※ SNS 固有の ID は `platform_accounts` へ |
 | `platform_accounts` ★ | channel_id, platform（`youtube`/`tiktok`/…）, external_account_id, display_name, credential_id → api_credentials, status |
-| `channel_settings` | genre, sub_genres[], target_audience, tone, language（既定 `ja`）, region（既定 `JP`）, default_duration_sec, ng_words[], brand_guidelines (text), default_targets text[]（既定 `{tiktok,instagram_reels,youtube_shorts}`）, hook_mode（`REPLACE_NARRATION`/`OVERLAY_ONLY`）, preferred_video_provider, preferred_tts_provider, voice_id, idea_selection_mode (`AUTO_TOP`（既定）/`MANUAL`), auto_publish_enabled (default false), auto_publish_thresholds (jsonb), daily_budget_usd, monthly_budget_usd, per_video_budget_usd |
+| `channel_settings` | genre, sub_genres[], target_audience, tone, language（既定 `ja`）, region（既定 `JP`）, default_duration_sec, ng_words[], brand_guidelines (text), display_currency（既定 `JPY`）, fx_usd_jpy（既定 150、表示用の換算レート）, default_targets text[]（既定 `{tiktok,instagram_reels,youtube_shorts}`）, hook_mode（`REPLACE_NARRATION`/`OVERLAY_ONLY`）, preferred_video_provider, preferred_tts_provider, voice_id, idea_selection_mode (`AUTO_TOP`（既定）/`MANUAL`), auto_publish_enabled (default false), auto_publish_thresholds (jsonb), daily_budget_usd, monthly_budget_usd, per_video_budget_usd |
 | `api_credentials` | channel_id, provider (`YOUTUBE_OAUTH` 等), encrypted_payload (bytea, AES-256-GCM), key_version, scopes[], expires_at, revoked_at ※平文は保存しない |
 
 ### 市場分析
