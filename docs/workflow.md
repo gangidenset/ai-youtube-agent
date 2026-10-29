@@ -22,25 +22,29 @@ stateDiagram-v2
     [*] --> SCRIPT_GENERATION
     SCRIPT_GENERATION --> VIDEO_GENERATION
     VIDEO_GENERATION --> VOICE_GENERATION
-    VOICE_GENERATION --> VIDEO_EDITING
-    VIDEO_EDITING --> QUALITY_CHECK
+    VOICE_GENERATION --> VIDEO_EDITING: マスター編集
+    VIDEO_EDITING --> PLATFORM_OPTIMIZATION
+    PLATFORM_OPTIMIZATION --> QUALITY_CHECK
     QUALITY_CHECK --> WAITING_APPROVAL: score >= 下限
     QUALITY_CHECK --> REVISING: score < 下限（自動修正 最大 N 回）
-    WAITING_APPROVAL --> YOUTUBE_UPLOAD: 承認
+    WAITING_APPROVAL --> READY_FOR_DOWNLOAD: 承認（MVP）
+    READY_FOR_DOWNLOAD --> PUBLISHING: 将来（Publisher）
     WAITING_APPROVAL --> REVISING: 修正 / 再生成
     WAITING_APPROVAL --> REJECTED: 却下
     REVISING --> SCRIPT_GENERATION: 台本変更
     REVISING --> VIDEO_GENERATION: 映像のみ
     REVISING --> VOICE_GENERATION: 音声のみ
-    YOUTUBE_UPLOAD --> SCHEDULED: 予約公開
-    YOUTUBE_UPLOAD --> PERFORMANCE_ANALYSIS: 即時公開
+    PUBLISHING --> SCHEDULED: 予約公開
+    PUBLISHING --> PERFORMANCE_ANALYSIS: 即時公開
     SCHEDULED --> PERFORMANCE_ANALYSIS: 公開時刻到達
     PERFORMANCE_ANALYSIS --> LEARNING: 7d 計測完了
     LEARNING --> NEXT_CYCLE
   }
 ```
 
-Phase 1 では `SCRIPT_GENERATION → WAITING_APPROVAL`（台本承認モード）にショートカットする。
+Phase 1 では `SCRIPT_GENERATION → PLATFORM_OPTIMIZATION（テキストのみ）→ WAITING_APPROVAL`（台本承認モード）に短縮する。
+
+§9 の `YOUTUBE_UPLOAD` は複数 SNS 対応に合わせて `PUBLISHING`（Target ごと）に一般化した（ADR-007）。
 
 ## 状態一覧
 
@@ -54,11 +58,13 @@ Phase 1 では `SCRIPT_GENERATION → WAITING_APPROVAL`（台本承認モード�
 | SCRIPT_GENERATION | 台本 JSON 生成・Zod 検証 | `generate_script` | — | Schema 不一致は再要求（最大 2 回） |
 | VIDEO_GENERATION | シーン毎に生成・ポーリング・DL | `generate_video` | — | Retry 3 → 別 Provider → 通知 |
 | VOICE_GENERATION | ナレーション生成 | `generate_voice` | — | Retry 3 → 別 Provider |
-| VIDEO_EDITING | FFmpeg 結合・字幕・BGM・9:16 | `render_video` | — | Retry 2 → `FAILED` |
+| VIDEO_EDITING | **マスター**編集（FFmpeg 結合・BGM・9:16 クリーン版 + 字幕データ） | `render_video` | — | Retry 2 → `FAILED` |
+| PLATFORM_OPTIMIZATION ★ | 選択された Target のメタデータを Claude 1 回で一括生成・検証し、Target 別に FFmpeg でレンダリング（キャッシュあり） | `optimize_platforms` | — | Target 単位で失敗を隔離（他の Target は続行） |
 | QUALITY_CHECK | 実測（尺/LUFS/解像度）+ Claude 評価 | `quality_check` | — | — |
 | WAITING_APPROVAL | 承認依頼通知 | — | ✔ | リマインド通知 |
 | REVISING | 修正指示から差分方針を Claude が決定 | `revise` | — | — |
-| YOUTUBE_UPLOAD | resumable upload + メタデータ | `upload_youtube` | 承認済みのみ | Retry（同一 upload session 再開） |
+| READY_FOR_DOWNLOAD ★ | 承認済み Target の MP4 とテキストを署名付き URL で提供（MVP の終点） | — | — | — |
+| PUBLISHING（旧 YOUTUBE_UPLOAD） | Target ごとに Publisher Adapter で投稿（YouTube は Phase 3 から） | `publish_content` | 承認済み Target のみ | Retry（YouTube は同一 upload session を再開） |
 | SCHEDULED | 公開待ち | — | — | — |
 | PERFORMANCE_ANALYSIS | 1h/3h/6h/12h/24h/48h/7d に統計取得 | `analyze_performance`（遅延） | — | 欠損は次回に補完 |
 | LEARNING | 成功パターン抽出・更新 | `learn` | — | — |
@@ -72,7 +78,7 @@ Phase 1 では `SCRIPT_GENERATION → WAITING_APPROVAL`（台本承認モード�
 1. **許可遷移表**: `transitions.ts` に定義された遷移のみ可能（Claude が提案しても表に無ければ拒否）。
 2. **予算ガード**: 次ジョブの推定コスト + 当日/当月の実績 ≤ 上限。超過時は `PAUSED(BUDGET)`。
 3. **クォータガード**: YouTube 残量 ≥ 次ジョブの必要量 + 予備（投稿用に 1,600u を常に確保）。
-4. **人間ゲート**: `YOUTUBE_UPLOAD` は `approval_requests.status = APPROVED` かつ承認時スナップショットと現行バージョンが一致する場合のみ。
+4. **人間ゲート**: `PUBLISHING` は Target ごとに `approval_requests.status = APPROVED` かつ承認時スナップショットと現行バージョンが一致する場合のみ。
 5. **自動投稿ポリシー**（Phase 6、既定 OFF）:
    `quality >= 90 AND originality >= 85 AND policy_risk = LOW AND copyright_risk = LOW AND auto_publish = ON`
    の全てを満たし、かつ直近 N 本が人間承認済みで問題なしの場合のみ人間ゲートを省略。

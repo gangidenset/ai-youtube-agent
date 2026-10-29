@@ -4,6 +4,8 @@ Claude を「AI 動画ディレクター兼 AI オーケストレーター」と
 **市場分析 → 企画 → 台本 → 動画生成 → 編集 → AI 品質チェック → 人間承認 → 投稿 → 投稿後分析 → 改善**
 を自動化するプラットフォームです。担当者は制作条件を設定し、最終承認だけを行います。
 
+**1 つの企画から複数 SNS（TikTok / Instagram Reels / YouTube Shorts / YouTube / X / Facebook Reels）向けのコンテンツを生成**します。動画生成 AI はマスター動画の分だけ呼び出し、SNS ごとの違いは後処理で作るので、出力先を増やしてもコストはほとんど増えません。
+
 > **現在のステータス: Phase 1（MVP）実装中**
 > 設計は [設計提案書](./docs/design-proposal.md) と [意思決定ログ](./docs/decisions.md) を参照してください。
 
@@ -21,6 +23,7 @@ Claude を「AI 動画ディレクター兼 AI オーケストレーター」と
 | [docs/security.md](./docs/security.md) | Secret 管理・認証・脆弱性対策・AI 固有リスク |
 | [docs/cost-management.md](./docs/cost-management.md) | コスト記録・予算ガード・試算 |
 | [docs/deployment.md](./docs/deployment.md) | 環境・CI/CD・GitHub 開発フロー |
+| [docs/multi-platform.md](./docs/multi-platform.md) | **複数 SNS 対応**（PlatformConfig・Adapter・マスター動画・SNS 別最適化） |
 | [docs/decisions.md](./docs/decisions.md) | 意思決定ログ（ADR） |
 
 ## システム構成

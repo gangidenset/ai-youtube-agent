@@ -81,13 +81,27 @@
 | GET | `/projects/:id/assets` | 生成物（署名付き URL、有効期限 15 分） |
 | GET | `/projects/:id/decisions` | Claude の判断履歴 |
 
+### SNS（Target）
+
+| Method | Path | 説明 |
+|---|---|---|
+| GET | `/platform-targets` | 利用可能な Target 一覧（Registry から取得。UI のチェックボックスはこれで描画） |
+| GET | `/platform-targets/:targetId` | Config（上書きをマージ済み） |
+| PATCH | `/platform-targets/:targetId/override` | Config の上書き（OWNER、監査ログに記録） |
+| POST | `/quick-generate` | シンプルフロー: `{ channelId, theme, targets[] }` → 市場分析 → AUTO_TOP → 台本 → SNS 別最適化 → 202 |
+| GET | `/projects/:id/variants` | Target 別の成果物（メタデータ・プレビュー URL・検証結果） |
+| PATCH | `/projects/:id/variants/:targetId` | テキストの手動修正（再レンダリングなし） |
+| POST | `/projects/:id/variants/:targetId/regenerate` | その Target のテキストだけ再生成 |
+| GET | `/projects/:id/variants/:targetId/download` | MP4 の署名付き URL + テキスト（ダウンロードを `publications` に記録） |
+| PUT | `/projects/:id/targets` | 出力先 Target の追加・削除（追加分だけ最適化を実行） |
+
 ### 承認
 
 | Method | Path | 説明 | 権限 |
 |---|---|---|---|
 | GET | `/approvals?status=PENDING` | 承認待ち一覧 | APPROVER+ |
 | GET | `/approvals/:id` | 承認画面データ（プレビュー URL・メタデータ・各スコア・根拠・使用 AI・推定コスト・リスク） | APPROVER+ |
-| POST | `/approvals/:id/approve` | [承認して投稿]（body: privacyStatus, publishAt?） | APPROVER+ |
+| POST | `/approvals/:id/approve` | [承認]（body: targets?: 承認する Target。省略時は全 Target。MVP はダウンロード可能になる。投稿は Phase 3 以降に publishAt 等を指定） | APPROVER+ |
 | POST | `/approvals/:id/request-changes` | [修正]（body: instruction） | APPROVER+ |
 | POST | `/approvals/:id/reject` | [却下]（body: reason） | APPROVER+ |
 | POST | `/approvals/:id/regenerate` | [AIに再生成]（body: target: `SCRIPT`/`VIDEO`/`VOICE`/`ALL`） | APPROVER+ |

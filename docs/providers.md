@@ -116,3 +116,33 @@ interface Renderer {             // FFmpeg 実装
 
 - **権利が明確な素材のみ**（自社所有 / 商用ライセンス購入済みライブラリ / YouTube オーディオライブラリから手動取り込み）
 - `generated_assets.license_type` / `license_ref` を必須とし、ライセンス不明の素材はレンダリングで使用不可（コードで拒否）
+
+## Publisher（SNS 投稿、将来）
+
+複数 SNS 対応（[multi-platform.md](./multi-platform.md)）に合わせ、投稿は `YouTubeProvider.uploadVideo` を直接呼ばず、`Publisher` インターフェースを経由する。
+
+```ts
+interface Publisher {
+  readonly platform: string;
+  connect(channelId: string): Promise<OAuthStartInfo>;
+  publish(req: PublishRequest): Promise<PublishResult>;        // 即時 or 予約
+  getStatus(externalPostId: string): Promise<PublishStatus>;
+  getMetrics?(externalPostId: string): Promise<PostMetrics>;
+}
+```
+
+- `YouTubePublisher`（Phase 3）は内部で `YouTubeProvider` を使う。
+- TikTok / Instagram / Facebook / X は Phase 7。各社のアプリ審査が必要。
+- MVP は `DownloadPublisher` 相当（署名付き URL を発行し、`publications.status = DOWNLOADED` を記録）。
+
+## TrendSource（市場データ）
+
+```ts
+interface TrendSource {
+  readonly id: string;           // "youtube"
+  collect(query: ResearchQuery): Promise<MarketSample[]>;
+  estimateQuota(query: ResearchQuery): number;
+}
+```
+
+公式 API で市場データを取れるのは現状 YouTube のみ。TikTok の Research API は学術・非商用向け、Instagram / Facebook は自アカウントの Insights のみで、いずれもスクレイピングは禁止。

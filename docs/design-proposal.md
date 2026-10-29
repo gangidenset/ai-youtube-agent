@@ -1,6 +1,7 @@
 # 設計提案書（Phase 0）
 
 > ステータス: **承認済み（2026-10-29）** — Phase 1 実装中。決定事項は [decisions.md](./decisions.md)
+> **複数 SNS 対応（TikTok / Instagram Reels / YouTube Shorts / YouTube / X / Facebook Reels）を追加** → [multi-platform.md](./multi-platform.md)（ADR-007）
 > 作成日: 2026-10-29
 > 対象: AI YouTube Agent（YouTube Shorts 中心の企画〜投稿〜分析自動化プラットフォーム）
 
@@ -118,6 +119,7 @@ ai-youtube-agent/
 │   ├── db/               # Prisma schema・migrations・repository
 │   ├── queue/            # ジョブ定義・レートリミッタ・リトライポリシー
 │   ├── schemas/          # Zod スキーマ（台本 JSON・API DTO）共有
+│   ├── platforms/        # SNS 最適化レイヤー（PlatformConfig・Adapter・フックテンプレート）
 │   ├── config/           # 環境変数の読み込みと検証
 │   └── tsconfig/ eslint-config/
 ├── infra/
@@ -302,6 +304,7 @@ Claude の判断出力（構造化出力で強制）:
 - Trend Score（決定論的計算 + Claude の定性評価、根拠・不確実性つき）
 - 企画生成（A/B/C 案、Originality Score、リスク）と担当者の選択
 - 台本生成（§17 の JSON 形式、Zod 検証）と修正指示（バージョン保存）
+- **複数 SNS**: PlatformConfig / Adapter / フックテンプレート、出力先 SNS の選択 UI、SNS 別メタデータ（タイトル・投稿文・説明文・ハッシュタグ・CTA・フック）の一括生成（ADR-007）
 - 承認画面（動画なしの「台本承認」モード。スマホ対応）
 - ダッシュボード（今日のトレンド・企画・承認待ち・AI コスト）
 - AI コスト記録・監査ログ（Claude の判断履歴）
@@ -314,12 +317,12 @@ Claude の判断出力（構造化出力で強制）:
 
 | Phase | 内容 | 完了条件 |
 |------|------|------|
-| 2 動画制作 | VideoProvider（まず 1 社）・TTSProvider（1 社）・FFmpeg レンダリング・字幕・BGM・9:16 MP4・サムネイル・AI 品質チェック（フレーム抽出） | 台本から 30 秒 MP4 を自動生成し承認画面でプレビューできる |
+| 2 動画制作 | Kling・Google TTS・FFmpeg によるマスター動画、**Target 別レンダリング（9:16 / 1:1 / 16:9）・レンダーキャッシュ・ダウンロード**、字幕・BGM・サムネイル・AI 品質チェック | 1 企画から選択した SNS 別の MP4 をプレビュー・ダウンロードできる（Kling の呼び出しは 1 回分） |
 | 3 YouTube 投稿 | OAuth 連携（トークン暗号化）・投稿・予約公開・投稿履歴・Google OAuth 審査対応 | 承認ボタンで限定公開/予約投稿できる |
 | 4 分析 | 1h〜7d 定期取得・YouTube Analytics API・KPI ダッシュボード・Performance Score・Trend Score の重み補正 | 投稿後 7 日分の推移とKPIが見える |
 | 5 AI フィードバック | 過去動画分析・成功パターン抽出（`success_patterns`）・企画プロンプトへの反映・A/B 検証 | 新企画に「参照した成功パターン」が根拠として表示される |
 | 6 自動化 | Scheduler による定期市場分析・自動制作・Provider フォールバック強化・条件付き自動投稿（§41）・Push 通知 | 担当者操作が「承認」のみになる |
-| 7 拡張 | 複数チャンネル運用の UI 強化・通常動画（16:9）・TikTok / Reels 用 PublishTarget | |
+| 7 拡張 | Publisher Adapter（TikTok / Instagram / Facebook / X）・予約投稿・本格的な長尺 YouTube 用マスター・Threads 等の Target 追加・複数チャンネル運用の UI 強化 | 承認した Target が各 SNS に投稿される |
 
 ## 13. 技術的に実現できない / 制約のある機能
 

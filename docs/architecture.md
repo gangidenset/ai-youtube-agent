@@ -14,6 +14,7 @@ flowchart TB
   subgraph Domain["Domain（packages）"]
     CORE[core<br/>状態機械・スコア・ポリシー]
     ORC[orchestrator<br/>Claude 判断・Tool 定義・ガード]
+    PLT[platforms<br/>PlatformConfig・Adapter・Hook]
   end
   subgraph Infrastructure["Infrastructure（packages）"]
     DB[db<br/>Prisma Repository]
@@ -27,6 +28,8 @@ flowchart TB
   API --> Q
   WORKER --> ORC
   WORKER --> CORE
+  WORKER --> PLT
+  ORC --> PLT
   WORKER --> DB
   WORKER --> Q
   ORC --> PROV
@@ -43,6 +46,7 @@ flowchart TB
 | `packages/core` | schemas | 外部 I/O（純粋関数に保つ → テスト容易） |
 | `packages/orchestrator` | core / schemas / providers のインターフェース | Provider 実装への直接依存 |
 | `packages/providers` | schemas / config | ビジネスロジック |
+| `packages/platforms` | schemas | 外部 I/O、SNS 名によるハードコード分岐（差異は Config か Adapter で表す） |
 
 依存方向は ESLint（`eslint-plugin-boundaries` 等）で CI 強制する。
 
@@ -95,7 +99,7 @@ sequenceDiagram
 | 複数ユーザー / 組織 | `users` ↔ `channel_members`（ロール）。将来 `organizations` を上位に追加可能な ID 設計 |
 | 複数動画生成 AI / TTS | Provider Registry + 設定でチャンネル別に優先順位・フォールバック順を指定 |
 | 複数フォーマット（Shorts / 通常動画） | `video_projects.format`（`SHORTS_9_16` / `LANDSCAPE_16_9`）と `RenderProfile` |
-| TikTok / Reels | YouTube 投稿を `PublishTarget` インターフェースの一実装として作る（`youtube_uploads` は将来 `publications` に汎化可能） |
+| 複数 SNS（TikTok / Reels / X / Facebook / Threads …） | `packages/platforms` の PlatformConfig + Adapter。投稿は `Publisher` Adapter、投稿記録は汎用の `publications`（[multi-platform.md](./multi-platform.md)） |
 | ワークフローの高度化 | 状態機械を `packages/core` に閉じ込め、将来 Temporal に置き換え可能な境界にする |
 
 ## 技術選定と理由
@@ -179,6 +183,7 @@ ai-youtube-agent/
 │   │   ├── prisma/schema.prisma
 │   │   ├── prisma/migrations/
 │   │   └── src/repositories/
+│   ├── platforms/src/           # types, registry, adapters/, targets/, hooks/, render-spec, text, cache-key
 │   ├── queue/src/               # job-names.ts, retry-policy.ts, rate-limiter.ts, outbox.ts
 │   ├── schemas/src/             # script.ts, idea.ts, decision.ts, api/*.ts
 │   └── config/src/env.ts

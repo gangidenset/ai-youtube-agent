@@ -47,3 +47,15 @@
   - 自動選択の判断は `ai_decisions` に記録し（trigger = `SYSTEM`）、選ばれなかった案も一覧で確認・差し替えできる
 - `MANUAL`: 従来どおり `WAITING_IDEA_SELECTION` で担当者の選択を待つ。
 - いずれのモードでも **投稿前の人間承認は省略しない**（§22）。
+
+## ADR-007 複数 SNS 対応（1 企画 → マスター → SNS 別出力） — 2026-10-29
+
+- **決定**: SNS 中立の「AI コンテンツ生成エンジン」と「SNS 最適化レイヤー」を分ける。詳細は [multi-platform.md](./multi-platform.md)。
+- **初期 Target**: `tiktok` / `instagram_reels` / `youtube_shorts` / `youtube_video` / `x_video` / `facebook_reels`。
+- **SNS の仕様**（アスペクト比・尺・文字数・ハッシュタグ数・スタイル）は `PlatformTargetConfig` として **データで管理**する（コード内の SNS 名による分岐は禁止）。実行時の調整は `platform_config_overrides` で行う。
+- **SNS の追加** = Config ファイル（必要なら Adapter サブクラス）を追加し、登録一覧に 1 行加えるだけ。
+- **コスト**: 動画生成 AI（Kling）と TTS はマスターに対して 1 回だけ呼ぶ。SNS 別の差分は FFmpeg の後処理とし、テキストは選択された全 Target を Claude 1 回で一括生成する。レンダーキャッシュと部分再生成で無駄を省く。
+- **マスターのアスペクト比**: 9:16 で生成し、被写体を中央に寄せる構図を指示する。1:1 は中央クロップ、16:9 はぼかし背景のピラーボックスで作る。本格的な長尺 YouTube 動画は将来、別系統のマスター台本で対応する。
+- **MVP**: 動画生成 → SNS 別最適化 → プレビュー / ダウンロード。自動投稿は `Publisher` Adapter として後から追加する（YouTube は既存計画どおり Phase 3、他 SNS は Phase 7）。
+- **トレンドデータ**: 公式 API で市場データを取れる YouTube を主な情報源とする。他 SNS への適合度は推定値として不確実性を明示する。
+- **既存仕様の維持**: Trend Score、AUTO_TOP、Kling 3.0、Google Cloud TTS、人間承認はすべて変更しない。

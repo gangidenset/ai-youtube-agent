@@ -37,8 +37,11 @@ erDiagram
   voice_generations ||--o{ generated_assets : ""
   video_projects ||--o{ quality_checks : ""
   video_projects ||--o{ approval_requests : ""
-  video_projects ||--o{ youtube_uploads : ""
-  youtube_uploads ||--o{ video_performance : "1h..7d"
+  channels ||--o{ platform_accounts : ""
+  video_projects ||--o{ platform_variants : "per target"
+  platform_variants ||--o{ publications : ""
+  publications ||--o| youtube_uploads : "YouTube 詳細"
+  publications ||--o{ video_performance : "1h..7d"
   video_projects ||--o{ workflow_jobs : ""
   research_runs ||--o{ workflow_jobs : ""
   workflow_jobs ||--o{ ai_costs : ""
@@ -63,8 +66,9 @@ erDiagram
 
 | テーブル | 主要カラム |
 |------|------|
-| `channels` | name, youtube_channel_id, platform (`YOUTUBE`), default_format, status |
-| `channel_settings` | genre, sub_genres[], target_audience, tone, language（既定 `ja`）, region（既定 `JP`）, default_duration_sec, ng_words[], brand_guidelines (text), preferred_video_provider, preferred_tts_provider, voice_id, idea_selection_mode (`AUTO_TOP`（既定）/`MANUAL`), auto_publish_enabled (default false), auto_publish_thresholds (jsonb), daily_budget_usd, monthly_budget_usd, per_video_budget_usd |
+| `channels` | name（発信ブランド単位。複数 SNS アカウントを束ねる）, status ※ SNS 固有の ID は `platform_accounts` へ |
+| `platform_accounts` ★ | channel_id, platform（`youtube`/`tiktok`/…）, external_account_id, display_name, credential_id → api_credentials, status |
+| `channel_settings` | genre, sub_genres[], target_audience, tone, language（既定 `ja`）, region（既定 `JP`）, default_duration_sec, ng_words[], brand_guidelines (text), default_targets text[]（既定 `{tiktok,instagram_reels,youtube_shorts}`）, hook_mode（`REPLACE_NARRATION`/`OVERLAY_ONLY`）, preferred_video_provider, preferred_tts_provider, voice_id, idea_selection_mode (`AUTO_TOP`（既定）/`MANUAL`), auto_publish_enabled (default false), auto_publish_thresholds (jsonb), daily_budget_usd, monthly_budget_usd, per_video_budget_usd |
 | `api_credentials` | channel_id, provider (`YOUTUBE_OAUTH` 等), encrypted_payload (bytea, AES-256-GCM), key_version, scopes[], expires_at, revoked_at ※平文は保存しない |
 
 ### 市場分析
@@ -82,7 +86,7 @@ erDiagram
 | `video_ideas` | research_run_id, channel_id, label (`A`/`B`/`C`), title, theme, target, hook, story, duration_sec, scene_count, cta, trend_score, originality_score, score_rationale (jsonb), similar_videos (jsonb), copy_risk, risks (jsonb), status (`PROPOSED`/`SELECTED`/`DISCARDED`) |
 | `video_projects` | channel_id, idea_id, code (`VP-0001`), format, state, current_script_version, current_render_id, total_cost_usd, paused_reason, failed_reason |
 | `scripts` | project_id, version, parent_version, content (jsonb：§17 の台本 JSON), schema_version, created_by (`AI`/`USER`), revision_id ※(project_id, version) unique |
-| `video_scenes` | script_id, scene_number, duration_sec, visual_prompt, narration, subtitle, sound_effect, transition |
+| `video_scenes` | script_id, scene_number, priority（`CORE`/`OPTIONAL`：尺の短い Target で省略可能）, duration_sec, visual_prompt, narration, subtitle, sound_effect, transition |
 | `project_revisions` ★ | project_id, from_version, to_version, instruction（例: 「冒頭を強く」）, requested_by, diff_summary (jsonb) |
 
 ### 制作
@@ -91,8 +95,8 @@ erDiagram
 |------|------|
 | `video_generations` | project_id, scene_id, script_version, provider, model, prompt, negative_prompt, params (jsonb), external_job_id, status, attempt, duration_sec, cost_usd, error_code, error_message |
 | `voice_generations` | project_id, script_version, provider, voice_id, text, chars, status, duration_sec, cost_usd |
-| `render_jobs` | project_id, script_version, render_profile (jsonb: 1080x1920, 30fps, -14 LUFS), ffmpeg_command_hash, status, output_asset_id, duration_sec, log_excerpt |
-| `generated_assets` | project_id, kind (`VIDEO_CLIP`/`VOICE`/`BGM`/`SFX`/`SUBTITLE`/`FINAL_VIDEO`/`THUMBNAIL`/`FRAME`), storage_key, mime, bytes, sha256, duration_sec, license_type (`GENERATED`/`LICENSED`/`OWN`), license_ref, source_generation_id |
+| `render_jobs` | project_id, script_version, target_id（NULL = マスター）, cache_key, render_profile (jsonb: 1080x1920, 30fps, -14 LUFS), ffmpeg_command_hash, status, output_asset_id, duration_sec, log_excerpt |
+| `generated_assets` | project_id, variant_id（nullable）, kind (`VIDEO_CLIP`/`VOICE`/`HOOK_VOICE`/`BGM`/`SFX`/`SUBTITLE`/`MASTER_VIDEO`/`PLATFORM_VIDEO`/`THUMBNAIL`/`FRAME`), storage_key, mime, bytes, sha256, duration_sec, license_type (`GENERATED`/`LICENSED`/`OWN`), license_ref, source_generation_id |
 
 ### 品質・承認・投稿
 
@@ -100,8 +104,10 @@ erDiagram
 |------|------|
 | `quality_checks` | project_id, script_version, render_id, total_score, item_scores (jsonb: §21 の各項目), copyright_risk, policy_risk, ai_content_risk, mass_production_risk (`LOW`/`MEDIUM`/`HIGH`), findings (jsonb), measured (jsonb: 実測尺・LUFS 等), model |
 | `approval_requests` | project_id, script_version, render_id, quality_check_id, status (`PENDING`/`APPROVED`/`CHANGES_REQUESTED`/`REJECTED`/`REGENERATE`), decided_by, decided_at, comment, snapshot (jsonb: 承認時点のメタデータ一式) |
-| `youtube_uploads` | project_id, approval_request_id, youtube_video_id, title, description, tags[], privacy_status, publish_at, contains_synthetic_media, made_for_kids, status, quota_cost, uploaded_at, error_message |
-| `video_performance` | upload_id, checkpoint (`H1`/`H3`/`H6`/`H12`/`H24`/`H48`/`D7`/…), hours_since_publish, views, likes, comments, avg_view_duration_sec, avg_view_percentage, subscribers_gained, estimated_revenue (Analytics, nullable), fetched_at ※(upload_id, checkpoint) unique |
+| `platform_variants` ★ | project_id, target_id, script_version, enabled, metadata (jsonb: title / caption / description / hashtags / cta / hook), metadata_issues (jsonb), render_asset_id, render_cache_key, config_spec_version, status（`PENDING`/`READY`/`APPROVED`/`REJECTED`）※(project_id, target_id, script_version) unique |
+| `publications` ★ | variant_id, platform_account_id, target_id, external_post_id, status（`DRAFT`/`DOWNLOADED`/`SCHEDULED`/`PUBLISHED`/`FAILED`）, scheduled_at, published_at, error_message ※ MVP は `DOWNLOADED` の記録のみ |
+| `youtube_uploads` | publication_id（YouTube 固有の詳細）, project_id, approval_request_id, youtube_video_id, title, description, tags[], privacy_status, publish_at, contains_synthetic_media, made_for_kids, status, quota_cost, uploaded_at, error_message |
+| `video_performance` | publication_id, target_id, upload_id（YouTube 互換）, checkpoint (`H1`/`H3`/`H6`/`H12`/`H24`/`H48`/`D7`/…), hours_since_publish, views, likes, comments, avg_view_duration_sec, avg_view_percentage, subscribers_gained, estimated_revenue (Analytics, nullable), fetched_at ※(upload_id, checkpoint) unique |
 
 ### 学習
 
@@ -119,6 +125,7 @@ erDiagram
 | `ai_decisions` ★ | channel_id, project_id, research_run_id, state, next_action, reason, confidence, parameters (jsonb), data_refs[], accepted (bool), rejected_reason（ガードで拒否された場合）, model, prompt_version, request_id |
 | `ai_costs` | job_id, channel_id, project_id, provider, model, operation, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, units（秒・文字数など）, unit_type, cost_usd, estimated (bool), latency_ms, request_id |
 | `api_quota_usage` ★ | provider, quota_bucket（例: `youtube:projectX`）, date (PT 基準), units_used, units_limit |
+| `platform_config_overrides` ★ | target_id, patch (jsonb), spec_version, effective_from, updated_by ※ 既定 Config へのマージ後に Zod で再検証 |
 | `provider_pricing` ★ | provider, model, unit_type, unit_price_usd, effective_from ※単価をコードに埋め込まない |
 | `system_logs` | level, category (`AUTH`/`SETTINGS`/`APPROVAL`/`SECRET_ACCESS`/`PROVIDER`/…), actor_id, channel_id, message, context (jsonb, Secret はマスク), ip |
 
