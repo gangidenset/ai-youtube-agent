@@ -54,7 +54,9 @@ TypeScript / pnpm + Turborepo / Next.js / Fastify / BullMQ + Redis / PostgreSQL 
 - Docker / Docker Compose
 - FFmpeg（ローカルで worker を直接動かす場合）
 
-## セットアップ（Phase 1 で有効化）
+## セットアップ
+
+> 現在使えるもの: install / lint / typecheck / test / build / dev（web・api・worker）。docker compose と DB は Issue #2・#3 で追加します。
 
 ```bash
 git clone https://github.com/gangidenset/ai-youtube-agent.git
@@ -69,10 +71,12 @@ cp .env.example .env
 ```
 
 ```bash
+# Issue #2 / #3 以降
 docker compose -f infra/docker/docker-compose.yml up -d
 ```
 
 ```bash
+# Issue #3 以降
 pnpm db:migrate && pnpm db:seed
 ```
 
@@ -80,7 +84,7 @@ pnpm db:migrate && pnpm db:seed
 pnpm dev
 ```
 
-- Web: http://localhost:3000 / API: http://localhost:4000 / MinIO: http://localhost:9001
+- Web: http://localhost:3000 / API: http://localhost:4000（`GET /api/v1/platform-targets` で出力先 SNS 一覧）
 - API キーが未設定の Provider は自動で `mock` 実装に切り替わり、キーなしでも一通りの流れを確認できます。
 
 ## 環境変数
