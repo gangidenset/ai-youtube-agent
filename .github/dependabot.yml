@@ -5,6 +5,13 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # typescript-eslint が TypeScript 7 に未対応（peer: typescript <6.1）
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      # 実行環境は Node.js 22（.nvmrc）。型定義のメジャーは Node と合わせて上げる
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       dev-dependencies:
         dependency-type: development
