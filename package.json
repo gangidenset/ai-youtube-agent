@@ -12,7 +12,13 @@
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
     "typecheck": "turbo run typecheck",
-    "test": "turbo run test"
+    "test": "turbo run test --concurrency=1",
+    "env:init": "node scripts/init-env.mjs",
+    "infra:up": "docker compose -f infra/docker/docker-compose.yml up -d --wait",
+    "infra:down": "docker compose -f infra/docker/docker-compose.yml down",
+    "db:migrate": "pnpm --filter @aya/db db:migrate",
+    "db:deploy": "pnpm --filter @aya/db db:deploy",
+    "db:seed": "pnpm --filter @aya/db db:seed"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

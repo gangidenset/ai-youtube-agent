@@ -1,3 +1,8 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+overrides:
+  # Prisma 7.10.1（@prisma/config）が effect 3.20.0 に固定しているため、ReDoS の修正版へ上げる
+  # GHSA-7589-6fvf-x4pw（effect <=3.22.0）。Prisma 側が更新されたら削除する
+  effect: ^3.22.1

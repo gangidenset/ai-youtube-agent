@@ -179,3 +179,19 @@ Confidence: 0.84
 Accepted: true   Model: claude-opus-5-5   Prompt: trend-analysis@v3
 Data: research_run:..., competitor_video:...(12件)
 ```
+
+## 実装メモ（Issue #6）
+
+| 部品 | 場所 | 内容 |
+|------|------|------|
+| ClaudeProvider | `packages/providers/src/claude/anthropic.ts` | 公式 SDK（`@anthropic-ai/sdk`）。既定 `claude-opus-5-5`、adaptive thinking、タスクごとの `effort`、`output_config.format`（Zod から JSON Schema を生成）、ストリーミングで受信して Zod で再検証。Schema に合わなければ最大 2 回再要求 |
+| 拒否・切り詰め | 同上 | `stop_reason` を先に確認する。`refusal` は `CLAUDE_REFUSAL`、`max_tokens` は `CLAUDE_MAX_TOKENS`（どちらもリトライしない）。拒否されたときはサーバー側のフォールバック（`fallbacks: "default"`、beta `server-side-fallback-2026-07-01`）で別モデルが続け、実際に応答したモデルを `model` として返す |
+| エラーの分類 | 同上 `toProviderError` | レート制限・5xx・接続エラーはリトライ、認証・入力不正はリトライしない（`ProviderError.retryable`）。ジョブ基盤は `retryable=false` を見て即 FAILED にする |
+| プロンプトキャッシュ | `SystemBlock.cache` | 安定した system ブロック（役割・ルール → チャンネル設定 → 成功パターン）に `cache_control` を付ける（最大 4 個） |
+| 外部データの隔離 | `packages/providers/src/claude/external-data.ts` | `wrapExternalData()` で `<external_data untrusted="true">` に入れる（`<` `>` はエスケープしてタグから抜け出せないようにする）。`EXTERNAL_DATA_POLICY` を system に含める |
+| mock | `packages/providers/src/claude/mock.ts` | operation ごとに応答を登録。API キーなしでローカル・CI が動く |
+| 判断のガード | `packages/orchestrator/src/decision.ts` | `evaluateDecision()`: Claude 自身の確認要求・確信度 0.6 未満 → 担当者へ / 遷移表にない遷移・人間承認が必要な状態（ダウンロード・投稿）への直接遷移・他チャンネルの ID → 拒否 |
+| コスト記録 | `packages/orchestrator/src/records.ts` | `completeAndRecord()` が `ai_costs` に記録（失敗した呼び出しで使ったトークン分も記録）。単価は `provider_pricing` から読み、キャッシュ単価が無ければ入力単価の 0.1 倍 / 1.25 倍で見積もる |
+| 監査ログ | 同上 `recordDecision()` | 判断・確信度・根拠データ・採否と拒否理由・モデル・プロンプトのバージョンを `ai_decisions` に記録 |
+
+判断の `next_action` の `PUBLISH` は、§10 の `upload_youtube` を複数 SNS 向けに一般化したもの（ADR-007）。AI の判断だけでは実行されない。

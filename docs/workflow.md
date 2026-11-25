@@ -119,3 +119,20 @@ Provider 呼び出し失敗
 - 公開時刻を起点に BullMQ の遅延ジョブを 7 本登録（1h, 3h, 6h, 12h, 24h, 48h, 7d）
 - 各回 `videos.list`（1u）で views / likes / comments を取得、Analytics API で視聴維持率等（24〜72h 遅延のため 48h / 7d で取得）
 - 7d 完了で `LEARNING` へ
+
+## 実装メモ（Issue #5）
+
+| 部品 | 場所 | 内容 |
+|------|------|------|
+| 状態・遷移表 | `packages/core/src/workflow.ts` | `canTransition()`。PAUSED / FAILED からは止まった状態にだけ戻れる |
+| ガード | `packages/core/src/guards.ts` | `evaluateTransition()` が遷移表 → 人間承認 → 予算 → クォータの順に確認（純粋関数。集計値は呼び出し側が渡す） |
+| 遷移の保存 | `packages/queue/src/transition.ts` | `applyTransition(tx, …)`: 「現在の状態が from のときだけ更新」＋ `workflow_transitions` に履歴。次のジョブ登録と同じトランザクションで呼ぶ |
+| ジョブ登録 | `packages/queue/src/enqueue.ts` | `enqueueJob(tx, …)`: `workflow_jobs` と `outbox_events` を同じトランザクションで作る。同じ `idempotency_key` は 1 件だけ |
+| 中継 | `packages/queue/src/outbox.ts` | 未送信の outbox を `FOR UPDATE SKIP LOCKED` で取り出して BullMQ へ追加（1 秒ごと） |
+| 実行 | `packages/queue/src/runner.ts` | QUEUED → RUNNING の取得は条件付き更新で 1 回だけ。30 秒ごとに heartbeat。終了時の書き込みは取得時の `retry_count` と一致する場合だけ（再投入後に古い実行の結果で上書きしない） |
+| リトライ | `packages/queue/src/retry.ts` | 指数バックオフ（約 30 秒 → 2 分 → 8 分、上限 15 分）＋ ジッター。`NonRetryableError` は即 FAILED |
+| 回収 | `packages/queue/src/reaper.ts` | heartbeat が 5 分途絶えた RUNNING を QUEUED に戻して再投入（キュー上の ID は `{id}-r{n}`）。試行回数を使い切っていれば FAILED（`STALLED`） |
+| キュー | `packages/queue/src/jobs.ts` | `llm`（並列 4、30 件/分）/ `youtube`（並列 2、5 件/秒）/ `analytics`（並列 2）。Phase 2 以降で動画・音声・レンダリング・投稿のキューを追加 |
+
+`workflow_jobs.retry_count` は「失敗して再投入した回数」。試行回数は `retry_count + 1` で、`max_attempts` に達したら FAILED にする。
+ジョブの処理（ハンドラ）は冪等に書く（同じ入力で 2 回呼ばれても結果が重複しないようにする）。

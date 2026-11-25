@@ -56,7 +56,7 @@ TypeScript / pnpm + Turborepo / Next.js / Fastify / BullMQ + Redis / PostgreSQL 
 
 ## セットアップ
 
-> 現在使えるもの: install / lint / typecheck / test / build / dev（web・api・worker）。docker compose と DB は Issue #2・#3 で追加します。
+> 現在使えるもの: install / env:init / infra:up / db:migrate / db:seed / lint / typecheck / test / build / dev（web・api・worker）。
 
 ```bash
 git clone https://github.com/gangidenset/ai-youtube-agent.git
@@ -67,25 +67,30 @@ cd ai-youtube-agent && pnpm install
 ```
 
 ```bash
-cp .env.example .env
+pnpm env:init
 ```
 
-```bash
-# Issue #2 / #3 以降
-docker compose -f infra/docker/docker-compose.yml up -d
-```
+`.env.example` から `.env` を作り、`SESSION_SECRET` と `TOKEN_ENCRYPTION_KEY` を自動生成します（既に `.env` があれば何もしません）。
 
 ```bash
-# Issue #3 以降
+pnpm infra:up
+```
+
+PostgreSQL / Redis / MinIO を docker compose で起動します（`127.0.0.1` のみに公開、停止は `pnpm infra:down`）。
+
+```bash
 pnpm db:migrate && pnpm db:seed
 ```
+
+初回の `pnpm db:seed` の前に、`.env` の `SEED_OWNER_PASSWORD` に初期 OWNER のパスワード（12 文字以上）を設定してください。
 
 ```bash
 pnpm dev
 ```
 
-- Web: http://localhost:3000 / API: http://localhost:4000（`GET /api/v1/platform-targets` で出力先 SNS 一覧）
-- API キーが未設定の Provider は自動で `mock` 実装に切り替わり、キーなしでも一通りの流れを確認できます。
+- Web: http://localhost:3000 / API: http://localhost:4000（`GET /api/v1/platform-targets` で出力先 SNS 一覧）/ MinIO コンソール: http://localhost:9001
+- 起動時に環境変数を検証し、必須の値が足りなければ不足している変数名を表示して停止します（値は表示しません）。
+- API キーが未設定の外部サービスは自動で `mock` 実装に切り替わり、キーなしでも一通りの流れを確認できます（本番では mock を許可しません）。
 
 ## 環境変数
 
@@ -115,9 +120,10 @@ pnpm dev
 
 ## DB 構築
 
-- スキーマ: `packages/db/prisma/schema.prisma`
-- マイグレーション: `pnpm db:migrate`（開発）/ `pnpm db:deploy`（本番、手動承認付きパイプライン）
-- シード: `pnpm db:seed`（初期 OWNER ユーザー・サンプルチャンネル）
+- スキーマ: `packages/db/prisma/schema.prisma`（Prisma 7）
+- マイグレーション: `pnpm db:migrate`（開発。スキーマ変更からマイグレーションを作成して適用）/ `pnpm db:deploy`（本番。手動承認付きパイプラインで実行）
+- シード: `pnpm db:seed`（開発専用。初期 OWNER・サンプルチャンネル・Provider 単価を投入。何度実行しても同じ状態になる）
+  - OWNER のメールは `SEED_OWNER_EMAIL`（既定 `owner@example.com`）、パスワードは `SEED_OWNER_PASSWORD`（12 文字以上）。初回は `.env` に自分で設定してください（パスワードはログに出しません）
 
 ## 起動方法
 

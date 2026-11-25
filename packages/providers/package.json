@@ -14,5 +14,11 @@
     "@types/node": "^22.20.5",
     "typescript": "^6.0.3",
     "vitest": "^5.1.2"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.14.0",
+    "@aya/core": "workspace:*",
+    "ioredis": "^6.1.0",
+    "zod": "^4.6.7"
   }
 }

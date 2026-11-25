@@ -1,0 +1,859 @@
+// AI YouTube Agent — Phase 1 のスキーマ（docs/database.md）
+// - 主キーは UUIDv7（アプリ側で生成、時系列ソート可能）
+// - テーブル名・カラム名は snake_case（@@map / @map）
+// - 金額は USD の Decimal。AI 出力は JSONB（schema_version 付き）
+// - Phase 2 以降のテーブル（video_generations / voice_generations / render_jobs / generated_assets /
+//   youtube_uploads / video_performance / success_patterns）は後続の Issue で追加する
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------- enums
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum ChannelRole {
+  OWNER
+  EDITOR
+  APPROVER
+  VIEWER
+}
+
+enum ChannelStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum PlatformAccountStatus {
+  CONNECTED
+  DISCONNECTED
+  ERROR
+}
+
+enum IdeaSelectionMode {
+  AUTO_TOP
+  MANUAL
+}
+
+enum HookMode {
+  REPLACE_NARRATION
+  OVERLAY_ONLY
+}
+
+/// packages/core の WORKFLOW_STATES と一致させる（テストで検証）
+enum WorkflowState {
+  IDLE
+  MARKET_RESEARCH
+  TREND_ANALYSIS
+  IDEA_GENERATION
+  WAITING_IDEA_SELECTION
+  SCRIPT_GENERATION
+  VIDEO_GENERATION
+  VOICE_GENERATION
+  VIDEO_EDITING
+  PLATFORM_OPTIMIZATION
+  QUALITY_CHECK
+  WAITING_APPROVAL
+  REVISING
+  READY_FOR_DOWNLOAD
+  PUBLISHING
+  SCHEDULED
+  PERFORMANCE_ANALYSIS
+  LEARNING
+  NEXT_CYCLE
+  PAUSED
+  FAILED
+  REJECTED
+  CANCELLED
+}
+
+enum TrendType {
+  RISING
+  SURGING
+  EVERGREEN
+  SHORT_LIVED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum IdeaStatus {
+  PROPOSED
+  SELECTED
+  DISCARDED
+}
+
+enum VideoFormat {
+  SHORTS_9_16
+  LANDSCAPE_16_9
+}
+
+enum AuthorType {
+  AI
+  USER
+}
+
+enum ScenePriority {
+  CORE
+  OPTIONAL
+}
+
+enum VariantStatus {
+  PENDING
+  READY
+  APPROVED
+  REJECTED
+}
+
+enum PublicationStatus {
+  DRAFT
+  DOWNLOADED
+  SCHEDULED
+  PUBLISHED
+  FAILED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  CHANGES_REQUESTED
+  REJECTED
+  REGENERATE
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  WAITING_EXTERNAL
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum WorkflowEntityType {
+  RESEARCH_RUN
+  PROJECT
+}
+
+enum TransitionTrigger {
+  JOB
+  USER
+  AI_DECISION
+  SYSTEM
+}
+
+enum PricingUnit {
+  INPUT_TOKENS_1M
+  OUTPUT_TOKENS_1M
+  CACHE_READ_TOKENS_1M
+  CACHE_WRITE_TOKENS_1M
+  VIDEO_SECOND
+  TTS_CHARS_1M
+}
+
+enum LogLevel {
+  DEBUG
+  INFO
+  WARN
+  ERROR
+}
+
+enum LogCategory {
+  AUTH
+  SETTINGS
+  APPROVAL
+  SECRET_ACCESS
+  PROVIDER
+  WORKFLOW
+  SYSTEM
+}
+
+// ---------------------------------------------------------------- 認証・組織
+
+model User {
+  id               String     @id @default(uuid(7)) @db.Uuid
+  email            String     @unique
+  passwordHash     String     @map("password_hash")
+  displayName      String     @map("display_name")
+  status           UserStatus @default(ACTIVE)
+  lastLoginAt      DateTime?  @map("last_login_at") @db.Timestamptz
+  /// 連続ログイン失敗回数（成功でリセット）
+  failedLoginCount Int        @default(0) @map("failed_login_count")
+  /// この時刻までログインを拒否する（連続失敗によるロック）
+  lockedUntil      DateTime?  @map("locked_until") @db.Timestamptz
+  createdAt        DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+
+  sessions        Session[]
+  memberships     ChannelMember[]
+  revisions       ProjectRevision[]
+  approvals       ApprovalRequest[]
+  transitions     WorkflowTransition[]
+  configOverrides PlatformConfigOverride[]
+  systemLogs      SystemLog[]
+
+  @@map("users")
+}
+
+model Session {
+  id         String    @id @default(uuid(7)) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  /// トークンはハッシュのみ保存する（docs/security.md）。CSRF トークンはセッショントークンから HMAC で導出するので保存しない
+  tokenHash  String    @unique @map("token_hash")
+  /// アイドルタイムアウトの判定に使う
+  lastSeenAt DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz
+  ip         String?
+  userAgent  String?   @map("user_agent")
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model ChannelMember {
+  id        String      @id @default(uuid(7)) @db.Uuid
+  channelId String      @map("channel_id") @db.Uuid
+  userId    String      @map("user_id") @db.Uuid
+  role      ChannelRole
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, userId])
+  @@index([userId])
+  @@map("channel_members")
+}
+
+// ---------------------------------------------------------------- チャンネル
+
+/// 発信ブランドの単位。複数の SNS アカウント（platform_accounts）を束ねる。
+model Channel {
+  id        String        @id @default(uuid(7)) @db.Uuid
+  name      String
+  status    ChannelStatus @default(ACTIVE)
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime?     @map("deleted_at") @db.Timestamptz
+
+  settings         ChannelSettings?
+  members          ChannelMember[]
+  credentials      ApiCredential[]
+  platformAccounts PlatformAccount[]
+  researchRuns     ResearchRun[]
+  ideas            VideoIdea[]
+  projects         VideoProject[]
+  jobs             WorkflowJob[]
+  decisions        AiDecision[]
+  costs            AiCost[]
+  systemLogs       SystemLog[]
+
+  @@map("channels")
+}
+
+model ChannelSettings {
+  id                     String            @id @default(uuid(7)) @db.Uuid
+  channelId              String            @unique @map("channel_id") @db.Uuid
+  genre                  String?
+  subGenres              String[]          @default([]) @map("sub_genres")
+  targetAudience         String?           @map("target_audience")
+  tone                   String?
+  language               String            @default("ja")
+  region                 String            @default("JP")
+  defaultDurationSec     Int               @default(30) @map("default_duration_sec")
+  ngWords                String[]          @default([]) @map("ng_words")
+  brandGuidelines        String?           @map("brand_guidelines")
+  displayCurrency        String            @default("JPY") @map("display_currency")
+  /// 表示用の換算レート（記録・予算判定は USD）
+  fxUsdJpy               Decimal           @default(150) @map("fx_usd_jpy") @db.Decimal(10, 4)
+  /// 出力先 Target ID（packages/platforms の Registry に登録済みのもの）
+  defaultTargets         String[]          @default(["tiktok", "instagram_reels", "youtube_shorts"]) @map("default_targets")
+  hookMode               HookMode          @default(REPLACE_NARRATION) @map("hook_mode")
+  preferredVideoProvider String?           @map("preferred_video_provider")
+  preferredTtsProvider   String?           @map("preferred_tts_provider")
+  voiceId                String?           @map("voice_id")
+  ideaSelectionMode      IdeaSelectionMode @default(AUTO_TOP) @map("idea_selection_mode")
+  autoPublishEnabled     Boolean           @default(false) @map("auto_publish_enabled")
+  autoPublishThresholds  Json?             @map("auto_publish_thresholds")
+  dailyBudgetUsd         Decimal           @default(30) @map("daily_budget_usd") @db.Decimal(12, 2)
+  monthlyBudgetUsd       Decimal           @default(600) @map("monthly_budget_usd") @db.Decimal(12, 2)
+  perVideoBudgetUsd      Decimal           @default(10) @map("per_video_budget_usd") @db.Decimal(12, 2)
+  createdAt              DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt              DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@map("channel_settings")
+}
+
+/// OAuth トークン等。平文は保存しない（AES-256-GCM で暗号化した値のみ）。
+model ApiCredential {
+  id               String    @id @default(uuid(7)) @db.Uuid
+  channelId        String    @map("channel_id") @db.Uuid
+  provider         String
+  encryptedPayload Bytes     @map("encrypted_payload")
+  keyVersion       Int       @map("key_version")
+  scopes           String[]  @default([])
+  expiresAt        DateTime? @map("expires_at") @db.Timestamptz
+  revokedAt        DateTime? @map("revoked_at") @db.Timestamptz
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  channel          Channel           @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  platformAccounts PlatformAccount[]
+
+  @@index([channelId, provider])
+  @@map("api_credentials")
+}
+
+model PlatformAccount {
+  id                String                @id @default(uuid(7)) @db.Uuid
+  channelId         String                @map("channel_id") @db.Uuid
+  platform          String
+  externalAccountId String                @map("external_account_id")
+  displayName       String?               @map("display_name")
+  credentialId      String?               @map("credential_id") @db.Uuid
+  status            PlatformAccountStatus @default(DISCONNECTED)
+  createdAt         DateTime              @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime              @updatedAt @map("updated_at") @db.Timestamptz
+
+  channel      Channel        @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  credential   ApiCredential? @relation(fields: [credentialId], references: [id], onDelete: SetNull)
+  publications Publication[]
+
+  @@unique([platform, externalAccountId])
+  @@index([channelId])
+  @@map("platform_accounts")
+}
+
+// ---------------------------------------------------------------- 市場分析
+
+model ResearchRun {
+  id          String        @id @default(uuid(7)) @db.Uuid
+  channelId   String        @map("channel_id") @db.Uuid
+  state       WorkflowState @default(MARKET_RESEARCH)
+  keywords    String[]      @default([])
+  region      String        @default("JP")
+  params      Json?
+  quotaUsed   Int           @default(0) @map("quota_used")
+  startedAt   DateTime?     @map("started_at") @db.Timestamptz
+  completedAt DateTime?     @map("completed_at") @db.Timestamptz
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  channel          Channel           @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  competitorVideos CompetitorVideo[]
+  trends           MarketTrend[]
+  ideas            VideoIdea[]
+  jobs             WorkflowJob[]
+  decisions        AiDecision[]
+
+  @@index([channelId, createdAt])
+  @@map("research_runs")
+}
+
+model CompetitorVideo {
+  id                 String   @id @default(uuid(7)) @db.Uuid
+  researchRunId      String   @map("research_run_id") @db.Uuid
+  youtubeVideoId     String   @map("youtube_video_id")
+  title              String
+  descriptionExcerpt String?  @map("description_excerpt")
+  channelYoutubeId   String   @map("channel_youtube_id")
+  channelTitle       String?  @map("channel_title")
+  channelSubscribers BigInt?  @map("channel_subscribers")
+  publishedAt        DateTime @map("published_at") @db.Timestamptz
+  durationSec        Int?     @map("duration_sec")
+  isShortEstimated   Boolean  @default(false) @map("is_short_estimated")
+  categoryId         String?  @map("category_id")
+  tags               String[] @default([])
+  viewCount          BigInt   @default(0) @map("view_count")
+  likeCount          BigInt?  @map("like_count")
+  commentCount       BigInt?  @map("comment_count")
+  fetchedAt          DateTime @map("fetched_at") @db.Timestamptz
+  ageHours           Float    @map("age_hours")
+  viewsPerHour       Float    @map("views_per_hour")
+  viewsPerSubscriber Float?   @map("views_per_subscriber")
+  likeRate           Float?   @map("like_rate")
+  commentRate        Float?   @map("comment_rate")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  researchRun ResearchRun @relation(fields: [researchRunId], references: [id], onDelete: Cascade)
+
+  @@unique([researchRunId, youtubeVideoId])
+  @@index([youtubeVideoId])
+  @@map("competitor_videos")
+}
+
+model MarketTrend {
+  id                String     @id @default(uuid(7)) @db.Uuid
+  researchRunId     String     @map("research_run_id") @db.Uuid
+  topic             String
+  trendType         TrendType  @map("trend_type")
+  trendScore        Float      @map("trend_score")
+  scoreBreakdown    Json       @map("score_breakdown")
+  competitionLevel  RiskLevel? @map("competition_level")
+  audienceNeeds     Json?      @map("audience_needs")
+  titlePatterns     Json?      @map("title_patterns")
+  hookPatterns      Json?      @map("hook_patterns")
+  structurePatterns Json?      @map("structure_patterns")
+  differentiation   Json?
+  uncertainty       String?
+  risks             Json?
+  evidenceVideoIds  String[]   @default([]) @map("evidence_video_ids")
+  schemaVersion     Int        @default(1) @map("schema_version")
+  createdAt         DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+
+  researchRun ResearchRun @relation(fields: [researchRunId], references: [id], onDelete: Cascade)
+
+  @@index([researchRunId, trendScore])
+  @@map("market_trends")
+}
+
+// ---------------------------------------------------------------- 企画・台本
+
+model VideoIdea {
+  id               String     @id @default(uuid(7)) @db.Uuid
+  researchRunId    String     @map("research_run_id") @db.Uuid
+  channelId        String     @map("channel_id") @db.Uuid
+  label            String
+  title            String
+  theme            String
+  target           String
+  hook             String
+  story            String
+  durationSec      Int        @map("duration_sec")
+  sceneCount       Int        @map("scene_count")
+  cta              String
+  trendScore       Float      @map("trend_score")
+  originalityScore Float      @map("originality_score")
+  scoreRationale   Json?      @map("score_rationale")
+  similarVideos    Json?      @map("similar_videos")
+  copyRisk         RiskLevel  @map("copy_risk")
+  policyRisk       RiskLevel  @default(LOW) @map("policy_risk")
+  risks            Json?
+  status           IdeaStatus @default(PROPOSED)
+  schemaVersion    Int        @default(1) @map("schema_version")
+  createdAt        DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+
+  researchRun ResearchRun   @relation(fields: [researchRunId], references: [id], onDelete: Cascade)
+  channel     Channel       @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  project     VideoProject?
+
+  @@unique([researchRunId, label])
+  @@index([channelId, status])
+  @@map("video_ideas")
+}
+
+model VideoProject {
+  id                   String         @id @default(uuid(7)) @db.Uuid
+  channelId            String         @map("channel_id") @db.Uuid
+  ideaId               String?        @unique @map("idea_id") @db.Uuid
+  /// 人が読むための連番（VP-0001）
+  code                 String         @unique
+  format               VideoFormat    @default(SHORTS_9_16)
+  state                WorkflowState  @default(SCRIPT_GENERATION)
+  /// PAUSED / FAILED から再開するときの戻り先
+  resumeState          WorkflowState? @map("resume_state")
+  currentScriptVersion Int?           @map("current_script_version")
+  /// Phase 2 で render_jobs への外部キーを追加する
+  currentRenderId      String?        @map("current_render_id") @db.Uuid
+  totalCostUsd         Decimal        @default(0) @map("total_cost_usd") @db.Decimal(12, 6)
+  pausedReason         String?        @map("paused_reason")
+  failedReason         String?        @map("failed_reason")
+  createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt            DateTime?      @map("deleted_at") @db.Timestamptz
+
+  channel       Channel           @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  idea          VideoIdea?        @relation(fields: [ideaId], references: [id], onDelete: SetNull)
+  scripts       Script[]
+  revisions     ProjectRevision[]
+  variants      PlatformVariant[]
+  qualityChecks QualityCheck[]
+  approvals     ApprovalRequest[]
+  jobs          WorkflowJob[]
+  decisions     AiDecision[]
+  costs         AiCost[]
+
+  @@index([channelId, state])
+  @@map("video_projects")
+}
+
+/// 台本はイミュータブル。修正は新しい version を作る（docs/database.md）。
+model Script {
+  id            String     @id @default(uuid(7)) @db.Uuid
+  projectId     String     @map("project_id") @db.Uuid
+  version       Int
+  parentVersion Int?       @map("parent_version")
+  /// 指示書 §17 の台本 JSON（packages/schemas の ScriptSchema）
+  content       Json
+  schemaVersion Int        @default(1) @map("schema_version")
+  createdBy     AuthorType @map("created_by")
+  revisionId    String?    @unique @map("revision_id") @db.Uuid
+  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz
+
+  project  VideoProject     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  revision ProjectRevision? @relation(fields: [revisionId], references: [id], onDelete: SetNull)
+  scenes   VideoScene[]
+
+  @@unique([projectId, version])
+  @@map("scripts")
+}
+
+model VideoScene {
+  id           String        @id @default(uuid(7)) @db.Uuid
+  scriptId     String        @map("script_id") @db.Uuid
+  sceneNumber  Int           @map("scene_number")
+  priority     ScenePriority @default(CORE)
+  durationSec  Float         @map("duration_sec")
+  visualPrompt String        @map("visual_prompt")
+  narration    String
+  subtitle     String
+  soundEffect  String        @default("") @map("sound_effect")
+  transition   String        @default("")
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz
+
+  script Script @relation(fields: [scriptId], references: [id], onDelete: Cascade)
+
+  @@unique([scriptId, sceneNumber])
+  @@map("video_scenes")
+}
+
+model ProjectRevision {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  projectId   String   @map("project_id") @db.Uuid
+  fromVersion Int      @map("from_version")
+  toVersion   Int?     @map("to_version")
+  /// 担当者の修正指示（例: 「冒頭を強く」）
+  instruction String
+  requestedBy String?  @map("requested_by") @db.Uuid
+  diffSummary Json?    @map("diff_summary")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  project   VideoProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  requester User?        @relation(fields: [requestedBy], references: [id], onDelete: SetNull)
+  script    Script?
+
+  @@index([projectId])
+  @@map("project_revisions")
+}
+
+// ---------------------------------------------------------------- 複数 SNS（ADR-007）
+
+model PlatformVariant {
+  id                String        @id @default(uuid(7)) @db.Uuid
+  projectId         String        @map("project_id") @db.Uuid
+  /// packages/platforms の Target ID
+  targetId          String        @map("target_id")
+  scriptVersion     Int           @map("script_version")
+  enabled           Boolean       @default(true)
+  /// title / caption / description / hashtags / cta / hook（packages/platforms の TargetMetadata）
+  metadata          Json?
+  metadataIssues    Json?         @map("metadata_issues")
+  /// Phase 2 で generated_assets への外部キーを追加する
+  renderAssetId     String?       @map("render_asset_id") @db.Uuid
+  renderCacheKey    String?       @map("render_cache_key")
+  configSpecVersion String        @map("config_spec_version")
+  status            VariantStatus @default(PENDING)
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  project      VideoProject  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  publications Publication[]
+
+  @@unique([projectId, targetId, scriptVersion])
+  @@index([renderCacheKey])
+  @@map("platform_variants")
+}
+
+model Publication {
+  id                String            @id @default(uuid(7)) @db.Uuid
+  variantId         String            @map("variant_id") @db.Uuid
+  platformAccountId String?           @map("platform_account_id") @db.Uuid
+  targetId          String            @map("target_id")
+  externalPostId    String?           @map("external_post_id")
+  status            PublicationStatus @default(DRAFT)
+  scheduledAt       DateTime?         @map("scheduled_at") @db.Timestamptz
+  publishedAt       DateTime?         @map("published_at") @db.Timestamptz
+  errorMessage      String?           @map("error_message")
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+
+  variant         PlatformVariant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  platformAccount PlatformAccount? @relation(fields: [platformAccountId], references: [id], onDelete: SetNull)
+
+  @@index([variantId])
+  @@index([status, scheduledAt])
+  @@map("publications")
+}
+
+model PlatformConfigOverride {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  targetId      String   @map("target_id")
+  /// 既定 Config へのパッチ。読み込み時にマージして Zod で再検証する
+  patch         Json
+  specVersion   String   @map("spec_version")
+  effectiveFrom DateTime @default(now()) @map("effective_from") @db.Timestamptz
+  updatedBy     String?  @map("updated_by") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  updater User? @relation(fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([targetId, effectiveFrom])
+  @@map("platform_config_overrides")
+}
+
+// ---------------------------------------------------------------- 品質・承認
+
+model QualityCheck {
+  id                 String    @id @default(uuid(7)) @db.Uuid
+  projectId          String    @map("project_id") @db.Uuid
+  scriptVersion      Int       @map("script_version")
+  /// Phase 2 で render_jobs への外部キーを追加する（Phase 1 は台本のみのチェックで NULL）
+  renderId           String?   @map("render_id") @db.Uuid
+  totalScore         Float     @map("total_score")
+  itemScores         Json      @map("item_scores")
+  copyrightRisk      RiskLevel @map("copyright_risk")
+  policyRisk         RiskLevel @map("policy_risk")
+  aiContentRisk      RiskLevel @map("ai_content_risk")
+  massProductionRisk RiskLevel @map("mass_production_risk")
+  findings           Json?
+  measured           Json?
+  model              String
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  project   VideoProject      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  approvals ApprovalRequest[]
+
+  @@index([projectId, scriptVersion])
+  @@map("quality_checks")
+}
+
+model ApprovalRequest {
+  id             String         @id @default(uuid(7)) @db.Uuid
+  projectId      String         @map("project_id") @db.Uuid
+  scriptVersion  Int            @map("script_version")
+  renderId       String?        @map("render_id") @db.Uuid
+  qualityCheckId String?        @map("quality_check_id") @db.Uuid
+  status         ApprovalStatus @default(PENDING)
+  decidedBy      String?        @map("decided_by") @db.Uuid
+  decidedAt      DateTime?      @map("decided_at") @db.Timestamptz
+  comment        String?
+  /// 承認時点のメタデータ一式（承認後に内容が変わっていないかの照合に使う）
+  snapshot       Json?
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+
+  project      VideoProject  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  qualityCheck QualityCheck? @relation(fields: [qualityCheckId], references: [id], onDelete: SetNull)
+  decider      User?         @relation(fields: [decidedBy], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([projectId])
+  @@map("approval_requests")
+}
+
+// ---------------------------------------------------------------- 運用・監査・コスト
+
+model WorkflowJob {
+  id             String    @id @default(uuid(7)) @db.Uuid
+  jobType        String    @map("job_type")
+  channelId      String?   @map("channel_id") @db.Uuid
+  projectId      String?   @map("project_id") @db.Uuid
+  researchRunId  String?   @map("research_run_id") @db.Uuid
+  idempotencyKey String    @unique @map("idempotency_key")
+  status         JobStatus @default(QUEUED)
+  priority       Int       @default(0)
+  retryCount     Int       @default(0) @map("retry_count")
+  maxAttempts    Int       @default(3) @map("max_attempts")
+  startedAt      DateTime? @map("started_at") @db.Timestamptz
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz
+  heartbeatAt    DateTime? @map("heartbeat_at") @db.Timestamptz
+  nextRunAt      DateTime? @map("next_run_at") @db.Timestamptz
+  errorCode      String?   @map("error_code")
+  errorMessage   String?   @map("error_message")
+  costUsd        Decimal   @default(0) @map("cost_usd") @db.Decimal(12, 6)
+  input          Json?
+  outputRef      String?   @map("output_ref")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  channel     Channel?             @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  project     VideoProject?        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  researchRun ResearchRun?         @relation(fields: [researchRunId], references: [id], onDelete: Cascade)
+  costs       AiCost[]
+  transitions WorkflowTransition[]
+
+  @@index([status, nextRunAt])
+  @@index([status, heartbeatAt])
+  @@index([projectId])
+  @@map("workflow_jobs")
+}
+
+/// 状態遷移の履歴（追記のみ）
+model WorkflowTransition {
+  id         String             @id @default(uuid(7)) @db.Uuid
+  entityType WorkflowEntityType @map("entity_type")
+  entityId   String             @map("entity_id") @db.Uuid
+  fromState  WorkflowState?     @map("from_state")
+  toState    WorkflowState      @map("to_state")
+  trigger    TransitionTrigger
+  actorId    String?            @map("actor_id") @db.Uuid
+  jobId      String?            @map("job_id") @db.Uuid
+  decisionId String?            @map("decision_id") @db.Uuid
+  createdAt  DateTime           @default(now()) @map("created_at") @db.Timestamptz
+
+  actor    User?        @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  job      WorkflowJob? @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  decision AiDecision?  @relation(fields: [decisionId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt])
+  @@map("workflow_transitions")
+}
+
+/// 状態更新と同じトランザクションで挿入し、別プロセスがキューへ投入する（Transactional Outbox）
+model OutboxEvent {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  eventType   String    @map("event_type")
+  payload     Json
+  publishedAt DateTime? @map("published_at") @db.Timestamptz
+  attempts    Int       @default(0)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([publishedAt, createdAt])
+  @@map("outbox_events")
+}
+
+/// Claude の判断の監査ログ（追記のみ）
+model AiDecision {
+  id             String        @id @default(uuid(7)) @db.Uuid
+  channelId      String?       @map("channel_id") @db.Uuid
+  projectId      String?       @map("project_id") @db.Uuid
+  researchRunId  String?       @map("research_run_id") @db.Uuid
+  state          WorkflowState
+  nextAction     String        @map("next_action")
+  reason         String
+  confidence     Float
+  parameters     Json
+  dataRefs       String[]      @default([]) @map("data_refs")
+  accepted       Boolean
+  rejectedReason String?       @map("rejected_reason")
+  model          String
+  promptVersion  String        @map("prompt_version")
+  requestId      String?       @map("request_id")
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz
+
+  channel     Channel?             @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  project     VideoProject?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  researchRun ResearchRun?         @relation(fields: [researchRunId], references: [id], onDelete: SetNull)
+  transitions WorkflowTransition[]
+
+  @@index([projectId, createdAt])
+  @@index([channelId, createdAt])
+  @@map("ai_decisions")
+}
+
+/// すべての外部 API 呼び出しのコスト（USD）
+model AiCost {
+  id               String   @id @default(uuid(7)) @db.Uuid
+  jobId            String?  @map("job_id") @db.Uuid
+  channelId        String?  @map("channel_id") @db.Uuid
+  projectId        String?  @map("project_id") @db.Uuid
+  provider         String
+  model            String?
+  operation        String
+  inputTokens      Int?     @map("input_tokens")
+  outputTokens     Int?     @map("output_tokens")
+  cacheReadTokens  Int?     @map("cache_read_tokens")
+  cacheWriteTokens Int?     @map("cache_write_tokens")
+  units            Decimal? @db.Decimal(14, 4)
+  unitType         String?  @map("unit_type")
+  costUsd          Decimal  @map("cost_usd") @db.Decimal(12, 6)
+  estimated        Boolean  @default(true)
+  latencyMs        Int?     @map("latency_ms")
+  requestId        String?  @map("request_id")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  job     WorkflowJob?  @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  channel Channel?      @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  project VideoProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([channelId, createdAt])
+  @@index([provider, createdAt])
+  @@map("ai_costs")
+}
+
+model ApiQuotaUsage {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  provider    String
+  /// 例: youtube:<Google Cloud プロジェクト>
+  quotaBucket String   @map("quota_bucket")
+  /// クォータの日付（YouTube は太平洋時間基準）
+  date        DateTime @db.Date
+  unitsUsed   Int      @default(0) @map("units_used")
+  unitsLimit  Int      @map("units_limit")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@unique([provider, quotaBucket, date])
+  @@map("api_quota_usage")
+}
+
+/// 単価をコードに埋め込まないためのテーブル（docs/cost-management.md）
+model ProviderPricing {
+  id            String      @id @default(uuid(7)) @db.Uuid
+  provider      String
+  model         String
+  unitType      PricingUnit @map("unit_type")
+  unitPriceUsd  Decimal     @map("unit_price_usd") @db.Decimal(14, 6)
+  effectiveFrom DateTime    @map("effective_from") @db.Timestamptz
+  /// 価格の出典・確認状況
+  note          String?
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz
+
+  @@unique([provider, model, unitType, effectiveFrom])
+  @@map("provider_pricing")
+}
+
+/// 監査・運用ログ（追記のみ）。context に Secret を入れない。
+model SystemLog {
+  id        String      @id @default(uuid(7)) @db.Uuid
+  level     LogLevel
+  category  LogCategory
+  actorId   String?     @map("actor_id") @db.Uuid
+  channelId String?     @map("channel_id") @db.Uuid
+  message   String
+  context   Json?
+  ip        String?
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz
+
+  actor   User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  channel Channel? @relation(fields: [channelId], references: [id], onDelete: SetNull)
+
+  @@index([category, createdAt])
+  @@index([channelId, createdAt])
+  @@map("system_logs")
+}

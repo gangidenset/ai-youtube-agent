@@ -41,3 +41,6 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 next-env.d.ts
+
+# Prisma Client（prisma generate で生成）
+packages/db/src/generated/

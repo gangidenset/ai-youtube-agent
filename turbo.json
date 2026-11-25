@@ -3,13 +3,14 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**", "src/generated/**"]
     },
     "typecheck": {
       "dependsOn": ["^typecheck"]
     },
     "test": {
-      "outputs": []
+      "outputs": [],
+      "env": ["DATABASE_URL", "REDIS_URL", "CI"]
     },
     "dev": {
       "cache": false,

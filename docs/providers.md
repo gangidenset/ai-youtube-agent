@@ -146,3 +146,16 @@ interface TrendSource {
 ```
 
 公式 API で市場データを取れるのは現状 YouTube のみ。TikTok の Research API は学術・非商用向け、Instagram / Facebook は自アカウントの Insights のみで、いずれもスクレイピングは禁止。
+
+## 実装メモ（Issue #7: YouTube）
+
+| 部品 | 場所 | 内容 |
+|------|------|------|
+| Data API クライアント | `packages/providers/src/youtube/data-api.ts` | `search.list`（`type=video`・`videoDuration=short`・`regionCode`・`relevanceLanguage`・`order=viewCount`）、`videos.list`（50 件ずつ・`chart=mostPopular`）、`channels.list`。API キーは `X-Goog-Api-Key` ヘッダで送り、URL やエラーメッセージに含めない。応答は Zod で検証 |
+| エラーの分類 | 同上 | `quotaExceeded` → リトライしない、`rateLimitExceeded`・5xx・接続エラー → リトライ、その他の 4xx → リトライしない |
+| クォータとキャッシュ | `packages/providers/src/youtube/guarded.ts` | API を呼ぶ前にクォータを予約し、足りなければ呼ばずに `QuotaExceededError`。結果は Redis にキャッシュ（検索 6 時間・動画 / 人気 1 時間・チャンネル 24 時間）。キャッシュにあればクォータを使わない。Redis が使えなくても処理は続ける |
+| クォータの台帳 | `packages/db/src/quota.ts` | `api_quota_usage` を太平洋時間の日付で管理。「上限 − 予備（投稿 1 回分 1,600）を超えないときだけ加算」を 1 つの UPDATE で行うため、同時実行でも超過しない |
+| mock | `packages/providers/src/youtube/mock.ts` | 入力から決まる架空のデータ（同じ入力なら毎回同じ）。クォータは本物と別のバケット（`youtube:mock`）で数える |
+| 市場分析ジョブ | `apps/worker/src/jobs/market-research.ts` | キーワード（最大 5）検索 + 人気動画 → 詳細（最大 300 本）→ チャンネル規模を取得し、派生指標（経過時間・1 時間あたり再生・登録者比・高評価率・コメント率・Shorts 推定）と一緒に保存。完了でトレンド分析へ。クォータ不足なら PAUSED にして太平洋時間の 0 時以降に自動再開 |
+
+市場分析 1 回のクォータ消費: キーワード数 × 100 + 人気動画 1 + 動画詳細（50 本ごとに 1）+ チャンネル（50 件ごとに 1）。キーワード 2 個なら約 203 units。
