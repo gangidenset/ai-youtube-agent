@@ -1,22 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { ApiError, api, type SessionResponse } from "../lib/api";
+import { api } from "../lib/api";
+import { useSession } from "../lib/session";
 import { styles } from "./styles";
 
 const ROLE_LABEL = { OWNER: "オーナー", EDITOR: "編集者", APPROVER: "承認者", VIEWER: "閲覧者" } as const;
 
 export default function HomePage() {
   const router = useRouter();
-  const [session, setSession] = useState<SessionResponse | null>(null);
-
-  useEffect(() => {
-    api.me().then(setSession, (err: unknown) => {
-      if (err instanceof ApiError && err.status === 401) router.replace("/login");
-    });
-  }, [router]);
-
+  const session = useSession();
   if (!session) return <main style={styles.card}>読み込み中…</main>;
 
   async function logout() {
@@ -26,22 +20,24 @@ export default function HomePage() {
   }
 
   return (
-    <main style={styles.card}>
-      <h1 style={{ marginTop: 0 }}>AI YouTube Agent</h1>
-      <p>{session.user.displayName} さんでログイン中</p>
-      <h2 style={{ fontSize: 18 }}>チャンネル</h2>
-      {session.user.channels.length === 0 ? (
-        <p>所属しているチャンネルはありません。</p>
-      ) : (
-        <ul>
-          {session.user.channels.map((c) => (
-            <li key={c.id}>
-              {c.name}（{ROLE_LABEL[c.role]}）
-            </li>
-          ))}
-        </ul>
-      )}
-      <p style={{ color: "#57606a" }}>ダッシュボードと動画生成の画面は今後の Issue で追加します。</p>
+    <main style={styles.page}>
+      <h1>AI YouTube Agent</h1>
+      <p style={styles.muted}>{session.user.displayName} さんでログイン中</p>
+      <section style={styles.section}>
+        <h2 style={{ fontSize: 18, marginTop: 0 }}>チャンネル</h2>
+        {session.user.channels.length === 0 ? (
+          <p>所属しているチャンネルはありません。</p>
+        ) : (
+          session.user.channels.map((c) => (
+            <div key={c.id} style={styles.item}>
+              <Link href={`/channels/${c.id}`} style={styles.link}>
+                {c.name}
+              </Link>
+              <span style={{ ...styles.muted, marginLeft: 8 }}>（{ROLE_LABEL[c.role]}）</span>
+            </div>
+          ))
+        )}
+      </section>
       <button style={{ ...styles.button, background: "#57606a" }} type="button" onClick={logout}>
         ログアウト
       </button>

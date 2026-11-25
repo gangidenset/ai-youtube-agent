@@ -1,4 +1,4 @@
-import type { TrendAnalysis } from "@aya/orchestrator";
+import type { IdeaSet, TrendAnalysis } from "@aya/orchestrator";
 import { MockClaudeProvider } from "@aya/providers";
 
 /**
@@ -27,6 +27,32 @@ export function createMockClaude(): MockClaudeProvider {
           demand: 0.6,
           risks: ["mock データのため実際の市場とは無関係"],
           uncertainty_note: "mock の分析です",
+        })),
+      };
+    },
+    generate_idea: (task): IdeaSet => {
+      const trendIds = [
+        ...new Set([...task.prompt.matchAll(/"trend_id": "([^"]+)"/g)].map((m) => m[1] ?? "")),
+      ];
+      const angles = ["初心者向けの入門", "失敗談から学ぶ", "1 日で試せる実践"];
+      return {
+        ideas: (["A", "B", "C"] as const).map((label, i) => ({
+          label,
+          trend_id: trendIds[i % Math.max(1, trendIds.length)] ?? "",
+          title: `（mock）${angles[i]}の企画 ${label}`,
+          theme: `（mock）${angles[i]}`,
+          target: "副業に興味がある会社員",
+          hook: `（mock）${angles[i]}で最初につまずく点は？`,
+          story: "問題提起 → 解決のステップ → まとめ",
+          duration_sec: 30,
+          scene_count: 6,
+          cta: "続きはプロフィールから",
+          common_patterns: ["冒頭で問いかける"],
+          original_angle: `${angles[i]}の視点で構成する`,
+          differentiation: ["実際の画面を見せる", "数字で比較する"],
+          similar_videos: [],
+          policy_risk: "LOW",
+          risks: ["mock の企画のため内容は未検証"],
         })),
       };
     },

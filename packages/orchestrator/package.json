@@ -19,6 +19,7 @@
     "@aya/core": "workspace:*",
     "@aya/db": "workspace:*",
     "@aya/providers": "workspace:*",
+    "@aya/queue": "workspace:*",
     "zod": "^4.6.7"
   }
 }

@@ -65,7 +65,7 @@
 |---|---|---|
 | GET | `/research-runs/:id/ideas` | A/B/C 案 |
 | POST | `/research-runs/:id/ideas/regenerate` | 企画再生成（指示付き可） → 202 |
-| POST | `/ideas/:id/select` | 企画選択 → Project 作成 + 台本生成開始 → 202 |
+| POST | `/ideas/:id/select` | 企画選択 → Project 作成 + 台本生成開始 → 202。台本生成の前なら別の案に差し替え可（それ以降は 409 `SCRIPT_STARTED`） |
 
 ### プロジェクト・台本
 

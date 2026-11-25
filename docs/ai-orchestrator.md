@@ -207,3 +207,14 @@ Data: research_run:..., competitor_video:...(12件)
 | トレンド分析のプロンプト | `packages/orchestrator/src/tasks/trend-analysis.ts` | system（役割・ルール・外部データの扱い）とチャンネル設定はキャッシュ対象。市場データ（再生速度の高い順に最大 80 本、Shorts と推定される動画を優先）は `<external_data>` で渡す。effort は high |
 | トレンド分析ジョブ | `apps/worker/src/jobs/trend-analysis.ts` | Claude が挙げたテーマのうち、入力データで根拠を確認できる動画だけを使ってスコアを計算し `market_trends` に保存 → 企画生成へ。断定表現があれば 1 回だけ書き直しを求め、残れば `OVERCLAIM` で失敗 |
 | API | `GET /api/v1/research-runs/:id/trends` | スコアの高い順。内訳・使ったデータ・不確実性・リスク・根拠の動画と、「保証ではない」「YouTube 以外の SNS は推定」の注意書きを返す |
+
+## 実装メモ（Issue #9: 企画生成 / AUTO_TOP / 手動選択）
+
+| 部品 | 場所 | 内容 |
+|------|------|------|
+| 企画生成のプロンプト | `packages/orchestrator/src/tasks/generate-idea.ts`（`generate-idea@v1`） | Trend Score 上位 3 テーマと根拠の動画を `<external_data>` で渡し、A/B/C の 3 案をちょうど返させる（Zod `IdeaSetSchema`）。各案に 共通パターン・独自の切り口・差別化・似ている既存動画（内容の類似度 0〜1）・ポリシーリスクを書かせる。system とチャンネル設定はキャッシュ対象、effort は high |
+| 企画生成ジョブ | `apps/worker/src/jobs/generate-idea.ts` | 断定表現は 1 回だけ書き直しを求め、残れば `OVERCLAIM` で失敗。Originality は集めた全動画と比べる（文字の類似度 = タイトル・フックと既存タイトルの 2-gram Jaccard の大きい方、内容の類似度 = Claude の値。挙げられていない動画は文字の類似度と同じとみなす）。`video_ideas` に保存して `WAITING_IDEA_SELECTION` へ |
+| AUTO_TOP の判定 | `packages/core/src/ideas.ts` `selectAutoTop()` | 対象 = Originality 60 以上・コピーリスク HIGH でない・ポリシーリスク HIGH でない案。Trend Score → Originality → ラベル順で 1 案。対象がなければ人間の選択を待つ。判断は `ai_decisions`（model `rule:auto_top`、`GENERATE_SCRIPT` または `ESCALATE_TO_HUMAN`）に残す |
+| 採用・差し替え | `packages/orchestrator/src/selection.ts` `selectIdea()` | 初回: `video_projects`（`VP-0001` 形式の連番）を作り、企画を `SELECTED`、Research Run を `SCRIPT_GENERATION` へ進め、`generate_script` を 1 回だけ登録（Outbox と同じトランザクション）。差し替え: 台本がまだ無い間だけ可能。前の案は `PROPOSED` に戻し、待機中の `generate_script` は `CANCELLED` にして登録し直す。台本の生成が始まった後は 409 `SCRIPT_STARTED` |
+| API | `GET /research-runs/:id/ideas`、`POST /ideas/:id/select`（202） | 一覧は各案に「自動採用の対象外の理由」を付ける。選択は `channel:edit` が必要（閲覧者 403、他チャンネル 404） |
+| 画面 | `apps/web/app/channels/[id]`、`apps/web/app/research-runs/[id]` | 市場分析の開始（Idempotency-Key 付き）・履歴、処理中の自動更新（3 秒）、トレンドと A/B/C 案のカード、採用・差し替えボタン。スマホ幅（375px）で横スクロールしない |

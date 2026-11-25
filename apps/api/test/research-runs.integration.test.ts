@@ -70,7 +70,12 @@ describe.runIf(databaseUrl)("research runs API (integration)", () => {
     const runs = await prisma.researchRun.findMany({
       where: { channelId: { in: [channelId, otherChannelId] } },
     });
-    await prisma.workflowTransition.deleteMany({ where: { entityId: { in: runs.map((r) => r.id) } } });
+    const projects = await prisma.videoProject.findMany({
+      where: { channelId: { in: [channelId, otherChannelId] } },
+    });
+    await prisma.workflowTransition.deleteMany({
+      where: { entityId: { in: [...runs.map((r) => r.id), ...projects.map((p) => p.id)] } },
+    });
     await prisma.workflowJob.deleteMany({ where: { id: { in: jobs.map((j) => j.id) } } });
     await prisma.channel.deleteMany({ where: { id: { in: [channelId, otherChannelId] } } });
     await prisma.user.deleteMany({ where: { email: { in: Object.values(emails) } } });
@@ -222,5 +227,114 @@ describe.runIf(databaseUrl)("research runs API (integration)", () => {
       cookies: sessions["viewer"]?.cookies ?? {},
     });
     expect(hidden.statusCode).toBe(404);
+  });
+
+  async function waitingRunWithIdeas(channel: string) {
+    const run = await prisma.researchRun.create({
+      data: { channelId: channel, state: "WAITING_IDEA_SELECTION", keywords: ["AI"] },
+    });
+    const ideas = [];
+    for (const [label, originality] of [
+      ["A", 80],
+      ["B", 40],
+    ] as const) {
+      ideas.push(
+        await prisma.videoIdea.create({
+          data: {
+            researchRunId: run.id,
+            channelId: channel,
+            label,
+            title: `企画 ${label}`,
+            theme: "t",
+            target: "t",
+            hook: "h",
+            story: "s",
+            durationSec: 30,
+            sceneCount: 6,
+            cta: "c",
+            trendScore: 70,
+            originalityScore: originality,
+            copyRisk: "LOW",
+          },
+        }),
+      );
+    }
+    return { run, ideas };
+  }
+
+  const select = (who: { cookies: Record<string, string>; csrf: string }, ideaId: string) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/ideas/${ideaId}/select`,
+      cookies: who.cookies,
+      headers: { origin: APP_ORIGIN, "x-csrf-token": who.csrf },
+    });
+
+  it("lists ideas with auto-selection eligibility and lets editors select and swap", async () => {
+    const { run, ideas } = await waitingRunWithIdeas(channelId);
+    const viewer = sessions["viewer"]!;
+    const editor = sessions["editor"]!;
+
+    const list = await app.inject({
+      method: "GET",
+      url: `/api/v1/research-runs/${run.id}/ideas`,
+      cookies: viewer.cookies,
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.json()).toMatchObject({
+      canSelect: true,
+      project: null,
+      ideas: [
+        { label: "A", autoSelectable: true, notAutoSelectableReason: null },
+        { label: "B", autoSelectable: false, notAutoSelectableReason: "Originality 60 未満" },
+      ],
+    });
+
+    expect((await select(viewer, ideas[0]!.id)).statusCode).toBe(403);
+    const chosen = await select(editor, ideas[0]!.id);
+    expect(chosen.statusCode).toBe(202);
+    expect(chosen.json()).toMatchObject({ swapped: false });
+    expect(chosen.json().projectCode).toMatch(/^VP-\d{4}$/);
+
+    // 台本生成の前なら、別の案に差し替えられる
+    const swapped = await select(editor, ideas[1]!.id);
+    expect(swapped.statusCode).toBe(202);
+    expect(swapped.json()).toMatchObject({ swapped: true, projectId: chosen.json().projectId });
+    const after = await app.inject({
+      method: "GET",
+      url: `/api/v1/research-runs/${run.id}/ideas`,
+      cookies: viewer.cookies,
+    });
+    expect(after.json()).toMatchObject({ canSelect: true, project: { ideaId: ideas[1]!.id } });
+
+    // 他のチャンネルの企画は存在も見せない
+    const other = await waitingRunWithIdeas(otherChannelId);
+    expect((await select(editor, other.ideas[0]!.id)).statusCode).toBe(404);
+  });
+
+  it("returns 409 when the run is not waiting for a selection", async () => {
+    const { run, ideas } = await waitingRunWithIdeas(channelId);
+    await prisma.researchRun.update({ where: { id: run.id }, data: { state: "IDEA_GENERATION" } });
+    const res = await select(sessions["editor"]!, ideas[0]!.id);
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({ error: { code: "NOT_SELECTABLE" } });
+  });
+
+  it("lists research runs of a channel, newest first", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/channels/${channelId}/research-runs`,
+      cookies: sessions["viewer"]!.cookies,
+    });
+    expect(res.statusCode).toBe(200);
+    const runs = res.json().researchRuns as { createdAt: string }[];
+    expect(runs.length).toBeGreaterThan(0);
+    expect([...runs].sort((a, b) => b.createdAt.localeCompare(a.createdAt))).toEqual(runs);
+    const forbidden = await app.inject({
+      method: "GET",
+      url: `/api/v1/channels/${otherChannelId}/research-runs`,
+      cookies: sessions["viewer"]!.cookies,
+    });
+    expect(forbidden.statusCode).toBe(403);
   });
 });

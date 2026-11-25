@@ -1,4 +1,6 @@
+import { describeIneligible, ineligibleReasons } from "@aya/core";
 import type { PrismaClient } from "@aya/db";
+import { SelectionError, selectIdea } from "@aya/orchestrator";
 import { enqueueJob } from "@aya/queue";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -213,5 +215,110 @@ export async function researchRunRoutes(app: FastifyInstance, prisma: PrismaClie
         }),
       })),
     };
+  });
+
+  /** チャンネルの市場分析の一覧（新しい順） */
+  app.get("/api/v1/channels/:id/research-runs", async (request) => {
+    const params = ChannelParams.safeParse(request.params);
+    if (!params.success) throw notFound();
+    await requireChannelPermission(prisma, request, params.data.id, "channel:read");
+    const runs = await prisma.researchRun.findMany({
+      where: { channelId: params.data.id },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    });
+    return {
+      researchRuns: runs.map((r) => ({
+        id: r.id,
+        state: r.state,
+        keywords: r.keywords,
+        createdAt: r.createdAt,
+        completedAt: r.completedAt,
+      })),
+    };
+  });
+
+  /** 企画の一覧（A / B / C）と、採用の状況 */
+  app.get("/api/v1/research-runs/:id/ideas", async (request) => {
+    const run = await loadRunForRead(request);
+    const [ideas, settings] = await Promise.all([
+      prisma.videoIdea.findMany({ where: { researchRunId: run.id }, orderBy: { label: "asc" } }),
+      prisma.channelSettings.findUnique({ where: { channelId: run.channelId } }),
+    ]);
+    const project = await prisma.videoProject.findFirst({
+      where: { idea: { researchRunId: run.id }, deletedAt: null },
+      include: { scripts: { select: { id: true }, take: 1 } },
+    });
+    const canSelect =
+      (!project && run.state === "WAITING_IDEA_SELECTION") ||
+      (!!project && project.state === "SCRIPT_GENERATION" && project.scripts.length === 0);
+
+    return {
+      researchRunId: run.id,
+      state: run.state,
+      selectionMode: settings?.ideaSelectionMode ?? "AUTO_TOP",
+      canSelect,
+      project: project
+        ? { id: project.id, code: project.code, state: project.state, ideaId: project.ideaId }
+        : null,
+      notice: "Trend Score・Originality Score は目安です。採用前に内容とリスクを確認してください。",
+      ideas: ideas.map((i) => {
+        const reasons = ineligibleReasons(i);
+        return {
+          id: i.id,
+          label: i.label,
+          status: i.status,
+          title: i.title,
+          theme: i.theme,
+          target: i.target,
+          hook: i.hook,
+          story: i.story,
+          durationSec: i.durationSec,
+          sceneCount: i.sceneCount,
+          cta: i.cta,
+          trendScore: i.trendScore,
+          originalityScore: i.originalityScore,
+          copyRisk: i.copyRisk,
+          policyRisk: i.policyRisk,
+          risks: i.risks,
+          scoreRationale: i.scoreRationale,
+          autoSelectable: reasons.length === 0,
+          notAutoSelectableReason: reasons.length ? describeIneligible(reasons) : null,
+        };
+      }),
+    };
+  });
+
+  /** 企画を選ぶ（手動選択、または自動採用された企画の差し替え） */
+  app.post("/api/v1/ideas/:id/select", async (request, reply) => {
+    const params = RunParams.safeParse(request.params);
+    if (!params.success) throw notFound();
+    const idea = await prisma.videoIdea.findUnique({ where: { id: params.data.id } });
+    if (!idea) throw notFound();
+    const { auth } = await requireChannelPermission(prisma, request, idea.channelId, "channel:edit").catch(
+      (err: unknown) => {
+        // 所属していないチャンネルの企画は存在も見せない。閲覧だけできる人には 403
+        if (err instanceof AppError && err.statusCode === 403) {
+          return prisma.channelMember
+            .findUnique({
+              where: { channelId_userId: { channelId: idea.channelId, userId: request.auth?.userId ?? "" } },
+            })
+            .then((m) => {
+              throw m ? err : notFound();
+            });
+        }
+        throw err;
+      },
+    );
+    try {
+      const result = await selectIdea(prisma, { ideaId: idea.id, trigger: "USER", actorId: auth.userId });
+      // 台本生成は非同期で進むため 202
+      return reply.status(202).send(result);
+    } catch (err) {
+      if (err instanceof SelectionError) {
+        throw new AppError(err.code === "IDEA_NOT_FOUND" ? 404 : 409, err.code, err.message);
+      }
+      throw err;
+    }
   });
 }
