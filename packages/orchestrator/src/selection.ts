@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@aya/db";
 import { applyTransition, enqueueJob, type TxClient } from "@aya/queue";
+import { lockProject } from "./scripts";
 
 export class SelectionError extends Error {
   constructor(
@@ -108,16 +109,22 @@ async function selectInTx(tx: TxClient, input: SelectIdeaInput): Promise<SelectI
     return { projectId: created.id, projectCode: created.code, swapped: false, unchanged: false };
   }
 
-  if (project.ideaId === idea.id) {
+  // 台本の保存（worker）と同時に差し替えないよう、プロジェクトをロックしてから確かめ直す
+  await lockProject(tx, project.id);
+  const fresh = await tx.videoProject.findUniqueOrThrow({
+    where: { id: project.id },
+    include: { scripts: { select: { id: true }, take: 1 } },
+  });
+  if (fresh.ideaId === idea.id) {
     return { projectId: project.id, projectCode: project.code, swapped: false, unchanged: true };
   }
-  if (project.state !== "SCRIPT_GENERATION" || project.scripts.length > 0) {
+  if (fresh.state !== "SCRIPT_GENERATION" || fresh.scripts.length > 0) {
     throw new SelectionError("SCRIPT_STARTED", "台本の生成が始まっているため、企画を差し替えられません");
   }
 
   // 差し替え: 前の企画を候補に戻し、未実行の台本生成ジョブを取り消して、新しい企画で登録し直す
-  if (project.ideaId) {
-    await tx.videoIdea.update({ where: { id: project.ideaId }, data: { status: "PROPOSED" } });
+  if (fresh.ideaId) {
+    await tx.videoIdea.update({ where: { id: fresh.ideaId }, data: { status: "PROPOSED" } });
   }
   await tx.videoIdea.update({ where: { id: idea.id }, data: { status: "SELECTED" } });
   await tx.videoProject.update({ where: { id: project.id }, data: { ideaId: idea.id } });
@@ -137,7 +144,8 @@ function enqueueScript(tx: TxClient, projectId: string, ideaId: string, channelI
   return enqueueJob(tx, {
     jobType: "generate_script",
     idempotencyKey: `generate_script:${projectId}:${ideaId}`,
-    input: { projectId },
+    // 差し替えの後に古い企画のジョブが動いても台本を作らないよう、企画の ID も渡す
+    input: { projectId, ideaId },
     channelId,
     projectId,
   });

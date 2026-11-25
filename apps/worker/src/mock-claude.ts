@@ -1,5 +1,27 @@
-import type { IdeaSet, TrendAnalysis } from "@aya/orchestrator";
+import type { IdeaSet, ReviseScriptOutput, TrendAnalysis } from "@aya/orchestrator";
 import { MockClaudeProvider } from "@aya/providers";
+import type { Script } from "@aya/schemas";
+
+/** 企画の尺を、5 秒前後のシーンに分ける */
+function mockScenes(durationSec: number, theme: string): Script["scenes"] {
+  const count = Math.max(2, Math.round(durationSec / 5));
+  const base = Math.floor(durationSec / count);
+  const steps = ["問いかけ", "よくある失敗", "解決のステップ 1", "解決のステップ 2", "比較", "まとめ"];
+  return Array.from({ length: count }, (_, i) => {
+    const step = i === 0 ? "問いかけ" : i === count - 1 ? "まとめ" : (steps[i] ?? `ポイント ${i}`);
+    return {
+      scene_number: i + 1,
+      // 端数は最後のシーンに寄せ、合計を尺に一致させる
+      duration: i === count - 1 ? durationSec - base * (count - 1) : base,
+      visual_prompt: `（mock）${theme}: ${step}を表す明るいイラスト、縦長 9:16`,
+      narration: `（mock）${step}のナレーション`,
+      subtitle: `（mock）${step}`,
+      sound_effect: "",
+      transition: i === 0 ? "" : "cut",
+      priority: i === 0 || i === count - 1 ? "CORE" : "OPTIONAL",
+    };
+  });
+}
 
 /**
  * API キーが無いときに使う Claude の代わり（ローカル開発・CI 用）。
@@ -54,6 +76,37 @@ export function createMockClaude(): MockClaudeProvider {
           policy_risk: "LOW",
           risks: ["mock の企画のため内容は未検証"],
         })),
+      };
+    },
+    generate_script: (task): Script => {
+      const field = (name: string) => task.prompt.match(new RegExp(`"${name}": "([^"]*)"`))?.[1] ?? "";
+      const duration = Number(task.prompt.match(/"duration_sec": (\d+)/)?.[1] ?? 30);
+      const theme = field("theme");
+      return {
+        title: field("title") || "（mock）台本",
+        hook: field("hook") || "（mock）フック",
+        target: field("target") || "（mock）視聴者",
+        duration_seconds: duration,
+        scenes: mockScenes(duration, theme),
+        cta: field("cta") || "続きはプロフィールから",
+        description: `（mock）${theme}について短く解説します。`,
+        hashtags: ["#mock", "#shorts"],
+      };
+    },
+    revise: (task): ReviseScriptOutput => {
+      // 今の台本を取り出し、冒頭のシーンだけ書き換える（変えていないシーンは一字一句そのまま）
+      const json = task.prompt.split("# 今の台本\n")[1]?.split("\n\n# 担当者の修正指示")[0] ?? "{}";
+      const current = JSON.parse(json) as Script;
+      const instruction = task.prompt.match(/<instruction>\n([\s\S]*?)\n<\/instruction>/)?.[1] ?? "";
+      const hook = `（mock 修正）${instruction.slice(0, 30)}`;
+      return {
+        scope: "SCENES",
+        change_summary: `（mock）冒頭のシーンを「${instruction.slice(0, 30)}」に合わせて書き換えました。`,
+        new_script: {
+          ...current,
+          hook,
+          scenes: current.scenes.map((s, i) => (i === 0 ? { ...s, narration: hook, subtitle: hook } : s)),
+        },
       };
     },
   });

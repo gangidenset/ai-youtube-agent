@@ -4,3 +4,4 @@ export * from "./guards";
 export * from "./market";
 export * from "./scoring";
 export * from "./ideas";
+export * from "./script";

@@ -119,6 +119,71 @@ export function newIdempotencyKey(): string {
   return `web-${crypto.randomUUID()}`;
 }
 
+export interface SceneItem {
+  scene_number: number;
+  duration: number;
+  visual_prompt: string;
+  narration: string;
+  subtitle: string;
+  sound_effect: string;
+  transition: string;
+  priority: "CORE" | "OPTIONAL";
+}
+
+/** 指示書 §17 の台本 JSON */
+export interface ScriptContent {
+  title: string;
+  hook: string;
+  target: string;
+  duration_seconds: number;
+  scenes: SceneItem[];
+  cta: string;
+  description: string;
+  hashtags: string[];
+}
+
+export type RevisionScope = "SCRIPT" | "SCENES" | "METADATA";
+
+export interface RevisionItem {
+  id: string;
+  fromVersion: number;
+  toVersion: number | null;
+  instruction: string;
+  requestedBy: string | null;
+  summary: { changeSummary?: string; requestedScope?: RevisionScope; unchanged?: boolean } | null;
+  createdAt: string;
+}
+
+export interface ProjectDetail {
+  id: string;
+  code: string;
+  channelId: string;
+  state: string;
+  researchRunId: string | null;
+  idea: { id: string; label: string; title: string; theme: string; target: string } | null;
+  currentScriptVersion: number | null;
+  script: ScriptContent | null;
+  versions: { version: number; parentVersion: number | null; createdBy: "AI" | "USER"; createdAt: string }[];
+  revisions: RevisionItem[];
+  working: boolean;
+  lastError: { jobType: string; message: string | null } | null;
+  canRevise: boolean;
+}
+
+export interface FieldChange {
+  field: string;
+  before: string | number;
+  after: string | number;
+}
+
+export interface ScriptDiff {
+  from: number;
+  to: number;
+  fields: FieldChange[];
+  scenes: { sceneNumber: number; change: "ADDED" | "REMOVED" | "CHANGED"; fields: FieldChange[] }[];
+  unchanged: boolean;
+}
+
 export const api = {
   login: (email: string, password: string) =>
     request<SessionResponse>("/api/v1/auth/login", {
@@ -149,5 +214,20 @@ export const api = {
     request<{ projectId: string; projectCode: string; swapped: boolean }>(`/api/v1/ideas/${ideaId}/select`, {
       method: "POST",
       csrfToken,
+    }),
+  getProject: (id: string) => request<ProjectDetail>(`/api/v1/projects/${id}`),
+  getScriptDiff: (id: string, from: number, to: number) =>
+    request<ScriptDiff>(`/api/v1/projects/${id}/scripts/diff?from=${from}&to=${to}`),
+  requestRevision: (
+    id: string,
+    body: { instruction: string; scope: RevisionScope },
+    csrfToken: string,
+    idempotencyKey: string,
+  ) =>
+    request<{ revisionId: string; jobId: string; fromVersion: number }>(`/api/v1/projects/${id}/revisions`, {
+      method: "POST",
+      csrfToken,
+      headers: { "idempotency-key": idempotencyKey },
+      body: JSON.stringify(body),
     }),
 };

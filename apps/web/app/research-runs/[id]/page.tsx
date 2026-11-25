@@ -124,8 +124,12 @@ export default function ResearchRunPage() {
           </p>
           {ideas.project && (
             <p>
-              採用中: <strong>{ideas.project.code}</strong>（
-              {STATE_LABEL[ideas.project.state] ?? ideas.project.state}）
+              採用中:{" "}
+              <Link href={`/projects/${ideas.project.id}`} style={styles.link}>
+                <strong>{ideas.project.code}</strong>
+              </Link>
+              （{STATE_LABEL[ideas.project.state] ?? ideas.project.state}
+              ）台本を見る・修正するにはコードを押してください
             </p>
           )}
           {ideas.ideas.map((idea) => (

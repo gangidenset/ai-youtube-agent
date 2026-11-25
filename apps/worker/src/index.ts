@@ -6,6 +6,8 @@ import { type JobHandlers, QUEUE_NAMES, startQueueRuntime } from "@aya/queue";
 import { Redis } from "ioredis";
 import { marketResearchHandler } from "./jobs/market-research";
 import { generateIdeaHandler } from "./jobs/generate-idea";
+import { generateScriptHandler } from "./jobs/generate-script";
+import { reviseHandler } from "./jobs/revise";
 import { trendAnalysisHandler } from "./jobs/trend-analysis";
 import { createMockClaude } from "./mock-claude";
 import { createYouTubeFactory } from "./providers";
@@ -33,6 +35,8 @@ async function main() {
     market_research: marketResearchHandler({ prisma, createYouTube, language: config.env.DEFAULT_LANGUAGE }),
     trend_analysis: trendAnalysisHandler({ prisma, claude }),
     generate_idea: generateIdeaHandler({ prisma, claude }),
+    generate_script: generateScriptHandler({ prisma, claude }),
+    revise: reviseHandler({ prisma, claude }),
   };
 
   const runtime = startQueueRuntime({

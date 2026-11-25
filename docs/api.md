@@ -75,8 +75,8 @@
 | GET | `/projects/:id` | 詳細（状態・現行バージョン・コスト） |
 | GET | `/projects/:id/versions` | バージョン履歴（台本・生成物・QC・承認） |
 | GET | `/projects/:id/scripts/:version` | 台本 JSON |
-| GET | `/projects/:id/scripts/diff?from=1&to=2` | 差分 |
-| POST | `/projects/:id/revisions` | 修正指示（body: instruction, scope?: `SCRIPT`/`SCENES`/`METADATA`） → 202 |
+| GET | `/projects/:id/scripts/diff?from=1&to=2` | 差分（項目単位の変更と、シーンの追加・変更・削除） |
+| POST | `/projects/:id/revisions` | 修正指示（body: instruction, scope?: `SCRIPT`/`SCENES`/`METADATA`、Idempotency-Key 必須） → 202。台本が無い・修正中・受け付けない状態は 409 |
 | POST | `/projects/:id/pause` / `/resume` / `/cancel` | 制御 |
 | GET | `/projects/:id/assets` | 生成物（署名付き URL、有効期限 15 分） |
 | GET | `/projects/:id/decisions` | Claude の判断履歴 |

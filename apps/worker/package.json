@@ -19,6 +19,7 @@
     "@aya/platforms": "workspace:*",
     "@aya/providers": "workspace:*",
     "@aya/queue": "workspace:*",
+    "@aya/schemas": "workspace:*",
     "@node-rs/argon2": "^2.2.2",
     "@prisma/adapter-pg": "^7.10.1",
     "@prisma/client": "^7.10.1",

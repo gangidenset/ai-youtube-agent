@@ -218,3 +218,20 @@ Data: research_run:..., competitor_video:...(12件)
 | 採用・差し替え | `packages/orchestrator/src/selection.ts` `selectIdea()` | 初回: `video_projects`（`VP-0001` 形式の連番）を作り、企画を `SELECTED`、Research Run を `SCRIPT_GENERATION` へ進め、`generate_script` を 1 回だけ登録（Outbox と同じトランザクション）。差し替え: 台本がまだ無い間だけ可能。前の案は `PROPOSED` に戻し、待機中の `generate_script` は `CANCELLED` にして登録し直す。台本の生成が始まった後は 409 `SCRIPT_STARTED` |
 | API | `GET /research-runs/:id/ideas`、`POST /ideas/:id/select`（202） | 一覧は各案に「自動採用の対象外の理由」を付ける。選択は `channel:edit` が必要（閲覧者 403、他チャンネル 404） |
 | 画面 | `apps/web/app/channels/[id]`、`apps/web/app/research-runs/[id]` | 市場分析の開始（Idempotency-Key 付き）・履歴、処理中の自動更新（3 秒）、トレンドと A/B/C 案のカード、採用・差し替えボタン。スマホ幅（375px）で横スクロールしない |
+
+## 実装メモ（Issue #10: 台本生成・修正・版管理）
+
+| 部品 | 場所 | 内容 |
+|------|------|------|
+| 台本の形式 | `packages/schemas/src/script.ts` | 指示書 §17。シーンは 1 から連番・合計秒数と `duration_seconds` の差 ±1 秒以内・scene 1 は CORE。形式が合わなければ Claude Provider が理由を添えて最大 2 回再要求する |
+| プロンプト | `packages/orchestrator/src/tasks/generate-script.ts`（`generate-script@v1` / `revise-script@v1`） | ルールとチャンネル設定（NG ワード含む）はキャッシュ対象。修正指示は `<instruction>` で区切って渡し、企画の核（テーマ・切り口・target）は変えないよう指示する |
+| 範囲の制限 | 同上 `applyRevisionScope()` | Claude の出力を機械的に制限する。target はいつも元のまま。`METADATA` はフック・尺・シーンを、`SCENES` はタイトル・説明文・ハッシュタグ・CTA を元に戻す |
+| NG ワード | `packages/core/src/script.ts` `findNgWords()` | 全角半角・大文字小文字・空白・記号の違いを無視して照合。タイトル・フック・CTA・説明文・ハッシュタグ・各シーンのナレーション/字幕/映像の指示が対象。断定表現（`findOverclaims`）と合わせ、見つかれば 1 回だけ書き直しを求め、残れば `SCRIPT_CHECK_FAILED` で失敗 |
+| 差分 | 同上 `diffScripts()` | 項目単位の変更と、シーンの追加・変更・削除。`changedSceneNumbers`（追加・変更）は Phase 2 で動画・音声を作り直す範囲に使う |
+| 台本生成ジョブ | `apps/worker/src/jobs/generate-script.ts` | 版 1 として `scripts` + `video_scenes` に保存。企画が差し替えられていたら何もしない（ジョブの入力に企画 ID を持たせ、保存前にプロジェクトをロックして確かめる）。既に台本があれば何もしない |
+| 修正の受付 | `packages/orchestrator/src/scripts.ts` `requestRevision()` | `project_revisions` に記録して `revise` ジョブを登録（Idempotency-Key 付き）。受け付けるのは台本ができた後の `SCRIPT_GENERATION` と `WAITING_APPROVAL`（→ `REVISING`）。前の修正・台本生成が終わるまでは 409 |
+| 修正ジョブ | `apps/worker/src/jobs/revise.ts` | 新しい版（`parent_version` = 元の版）を保存し、`project_revisions.to_version` と差分の要約を記録。何も変わらなければ版を増やさない。`REVISING` からは `SCRIPT_GENERATION` に戻す |
+| API | `GET /projects/:id`、`GET /projects/:id/scripts/:version`、`GET /projects/:id/scripts/diff?from&to`、`POST /projects/:id/revisions`（202） | 所属していないチャンネルは 404、閲覧者の修正依頼は 403 |
+| 画面 | `apps/web/app/projects/[id]` | 台本（シーン・省略可の印）、修正の依頼（範囲を選べる）、修正の履歴と差分。処理中は 3 秒ごとに自動更新 |
+
+Phase 1 の流れ（`SCRIPT_GENERATION → PLATFORM_OPTIMIZATION → WAITING_APPROVAL`）のうち、`PLATFORM_OPTIMIZATION` への接続は SNS 別テキストの生成（Issue #14）で行う。それまでは台本ができた `SCRIPT_GENERATION` のまま修正を受け付ける（遷移表は変えていない）。
