@@ -10,7 +10,7 @@
     },
     "test": {
       "outputs": [],
-      "env": ["DATABASE_URL", "CI"]
+      "env": ["DATABASE_URL", "REDIS_URL", "CI"]
     },
     "dev": {
       "cache": false,
