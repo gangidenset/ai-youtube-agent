@@ -11,6 +11,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@aya/config": "workspace:*",
     "@aya/platforms": "workspace:*"
   },
   "devDependencies": {

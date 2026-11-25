@@ -12,7 +12,10 @@
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
     "typecheck": "turbo run typecheck",
-    "test": "turbo run test"
+    "test": "turbo run test",
+    "env:init": "node scripts/init-env.mjs",
+    "infra:up": "docker compose -f infra/docker/docker-compose.yml up -d --wait",
+    "infra:down": "docker compose -f infra/docker/docker-compose.yml down"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@aya/config": "workspace:*",
     "@aya/platforms": "workspace:*",
     "fastify": "^5.12.8"
   },
