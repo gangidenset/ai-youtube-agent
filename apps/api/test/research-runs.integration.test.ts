@@ -165,4 +165,62 @@ describe.runIf(databaseUrl)("research runs API (integration)", () => {
       ).statusCode,
     ).toBe(404);
   });
+
+  it("lists trends by score with breakdown, uncertainty, evidence and a non-guarantee notice", async () => {
+    const run = await prisma.researchRun.create({
+      data: { channelId, state: "IDEA_GENERATION", keywords: ["AI"] },
+    });
+    await prisma.competitorVideo.create({
+      data: {
+        researchRunId: run.id,
+        youtubeVideoId: "yt-1",
+        title: "動画 1",
+        channelYoutubeId: "c1",
+        publishedAt: new Date("2026-11-24T00:00:00Z"),
+        viewCount: BigInt(5000),
+        fetchedAt: new Date("2026-11-25T00:00:00Z"),
+        ageHours: 24,
+        viewsPerHour: 208.3,
+      },
+    });
+    const base = {
+      researchRunId: run.id,
+      trendType: "RISING" as const,
+      scoreBreakdown: { points: { velocity: 20 } },
+      uncertainty: "MEDIUM: 根拠の動画が少ない",
+      risks: ["r"],
+    };
+    await prisma.marketTrend.createMany({
+      data: [
+        { ...base, topic: "低い", trendScore: 40, evidenceVideoIds: [] },
+        { ...base, topic: "高い", trendScore: 82.5, evidenceVideoIds: ["yt-1", "missing"] },
+      ],
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/research-runs/${run.id}/trends`,
+      cookies: sessions["viewer"]?.cookies ?? {},
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.notice).toContain("保証するものではありません");
+    expect(body.trends.map((t: { topic: string }) => t.topic)).toEqual(["高い", "低い"]);
+    expect(body.trends[0]).toMatchObject({
+      trendScore: 82.5,
+      uncertainty: "MEDIUM: 根拠の動画が少ない",
+      scoreBreakdown: { points: { velocity: 20 } },
+      evidence: [{ youtubeVideoId: "yt-1", title: "動画 1", viewCount: 5000 }],
+    });
+
+    const otherRun = await prisma.researchRun.create({
+      data: { channelId: otherChannelId, keywords: ["x"] },
+    });
+    const hidden = await app.inject({
+      method: "GET",
+      url: `/api/v1/research-runs/${otherRun.id}/trends`,
+      cookies: sessions["viewer"]?.cookies ?? {},
+    });
+    expect(hidden.statusCode).toBe(404);
+  });
 });

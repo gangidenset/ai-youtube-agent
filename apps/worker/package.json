@@ -15,6 +15,7 @@
     "@aya/config": "workspace:*",
     "@aya/core": "workspace:*",
     "@aya/db": "workspace:*",
+    "@aya/orchestrator": "workspace:*",
     "@aya/platforms": "workspace:*",
     "@aya/providers": "workspace:*",
     "@aya/queue": "workspace:*",

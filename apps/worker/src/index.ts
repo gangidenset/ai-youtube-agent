@@ -1,10 +1,12 @@
 import { ConfigError, loadConfig } from "@aya/config";
 import { createPrismaClient } from "@aya/db";
 import { createDefaultRegistry } from "@aya/platforms";
-import { RedisCacheStore } from "@aya/providers";
+import { AnthropicClaudeProvider, type ClaudeProvider, RedisCacheStore } from "@aya/providers";
 import { type JobHandlers, QUEUE_NAMES, startQueueRuntime } from "@aya/queue";
 import { Redis } from "ioredis";
 import { marketResearchHandler } from "./jobs/market-research";
+import { trendAnalysisHandler } from "./jobs/trend-analysis";
+import { createMockClaude } from "./mock-claude";
 import { createYouTubeFactory } from "./providers";
 
 async function main() {
@@ -14,6 +16,13 @@ async function main() {
   const prisma = createPrismaClient(config.env.DATABASE_URL);
   const redis = new Redis(config.env.REDIS_URL, { maxRetriesPerRequest: 1 });
   const createYouTube = createYouTubeFactory(config, prisma, new RedisCacheStore(redis));
+  const claude: ClaudeProvider =
+    config.providers.claude === "live" && config.env.ANTHROPIC_API_KEY
+      ? new AnthropicClaudeProvider({
+          apiKey: config.env.ANTHROPIC_API_KEY,
+          defaultModel: config.env.CLAUDE_DEFAULT_MODEL,
+        })
+      : createMockClaude();
 
   /**
    * ジョブの処理。Phase 1 の各 Issue（トレンド分析・企画・台本…）で追加していく。
@@ -21,6 +30,7 @@ async function main() {
    */
   const handlers: JobHandlers = {
     market_research: marketResearchHandler({ prisma, createYouTube, language: config.env.DEFAULT_LANGUAGE }),
+    trend_analysis: trendAnalysisHandler({ prisma, claude }),
   };
 
   const runtime = startQueueRuntime({

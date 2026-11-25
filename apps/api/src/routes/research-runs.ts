@@ -96,17 +96,22 @@ export async function researchRunRoutes(app: FastifyInstance, prisma: PrismaClie
     return reply.status(202).send(result);
   });
 
-  /** 市場分析の状態・ジョブ・収集した動画の概要 */
-  app.get("/api/v1/research-runs/:id", async (request) => {
+  /** 閲覧権限のある市場分析を読む。所属していないチャンネルの分析は、存在も分からないよう 404 にする */
+  async function loadRunForRead(request: FastifyRequest) {
     const params = RunParams.safeParse(request.params);
     if (!params.success) throw notFound();
     const run = await prisma.researchRun.findUnique({ where: { id: params.data.id } });
     if (!run) throw notFound();
-    // 所属していないチャンネルの分析は、存在も分からないよう 404 にする
     await requireChannelPermission(prisma, request, run.channelId, "channel:read").catch((err: unknown) => {
       if (err instanceof AppError && err.statusCode === 403) throw notFound();
       throw err;
     });
+    return run;
+  }
+
+  /** 市場分析の状態・ジョブ・収集した動画の概要 */
+  app.get("/api/v1/research-runs/:id", async (request) => {
+    const run = await loadRunForRead(request);
 
     const [jobs, videoCount, shortCount, topVideos] = await Promise.all([
       prisma.workflowJob.findMany({ where: { researchRunId: run.id }, orderBy: { createdAt: "asc" } }),
@@ -153,6 +158,60 @@ export async function researchRunRoutes(app: FastifyInstance, prisma: PrismaClie
           publishedAt: v.publishedAt,
         })),
       },
+    };
+  });
+
+  /**
+   * トレンド分析の結果（Trend Score の高い順）。スコアには内訳・使ったデータ・不確実性・リスクを必ず付ける。
+   * 予測は保証ではないこと、YouTube 以外の SNS への適合は推定であることを明示する（指示書 §14、docs/multi-platform.md §3.7）。
+   */
+  app.get("/api/v1/research-runs/:id/trends", async (request) => {
+    const run = await loadRunForRead(request);
+    const trends = await prisma.marketTrend.findMany({
+      where: { researchRunId: run.id },
+      orderBy: { trendScore: "desc" },
+    });
+    const evidenceIds = [...new Set(trends.flatMap((t) => t.evidenceVideoIds))];
+    const videos = await prisma.competitorVideo.findMany({
+      where: { researchRunId: run.id, youtubeVideoId: { in: evidenceIds } },
+    });
+    const byId = new Map(videos.map((v) => [v.youtubeVideoId, v]));
+
+    return {
+      researchRunId: run.id,
+      state: run.state,
+      notice:
+        "Trend Score は収集したデータに基づく目安で、再生数を保証するものではありません。市場データは YouTube から取得しており、他の SNS への適合度は推定です。",
+      trends: trends.map((t) => ({
+        id: t.id,
+        topic: t.topic,
+        trendType: t.trendType,
+        trendScore: t.trendScore,
+        scoreBreakdown: t.scoreBreakdown,
+        uncertainty: t.uncertainty,
+        competitionLevel: t.competitionLevel,
+        audienceNeeds: t.audienceNeeds,
+        titlePatterns: t.titlePatterns,
+        hookPatterns: t.hookPatterns,
+        structurePatterns: t.structurePatterns,
+        differentiation: t.differentiation,
+        risks: t.risks,
+        evidence: t.evidenceVideoIds.flatMap((id) => {
+          const v = byId.get(id);
+          return v
+            ? [
+                {
+                  youtubeVideoId: v.youtubeVideoId,
+                  title: v.title,
+                  channelTitle: v.channelTitle,
+                  viewCount: Number(v.viewCount),
+                  viewsPerHour: v.viewsPerHour,
+                  publishedAt: v.publishedAt,
+                },
+              ]
+            : [];
+        }),
+      })),
     };
   });
 }

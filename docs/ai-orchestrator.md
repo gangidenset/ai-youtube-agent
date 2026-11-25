@@ -195,3 +195,15 @@ Data: research_run:..., competitor_video:...(12件)
 | 監査ログ | 同上 `recordDecision()` | 判断・確信度・根拠データ・採否と拒否理由・モデル・プロンプトのバージョンを `ai_decisions` に記録 |
 
 判断の `next_action` の `PUBLISH` は、§10 の `upload_youtube` を複数 SNS 向けに一般化したもの（ADR-007）。AI の判断だけでは実行されない。
+
+## 実装メモ（Issue #8: Trend Score / Originality / トレンド分析）
+
+| 部品 | 場所 | 内容 |
+|------|------|------|
+| Trend Score | `packages/core/src/scoring.ts` `computeTrendScore()` | 根拠の動画の中央値を、その市場分析で集めた全動画の中での順位（0〜1）にして重みを掛ける（再生速度・規模比・高評価率・コメント率）。成長 = 期間の後半に公開された動画が再生に占める割合。競合 = 1 − (テーマの市場シェア・大手チャンネル（登録者 10 万人以上）の割合)。新規性・需要は Claude の 0〜1、自チャンネル適合は Phase 4 まで中立 0.5。値が非公開の要素も中立 0.5 にして、不確実性の理由に書く |
+| 不確実性 | 同上 | 根拠の動画が 8 本以上で LOW、3〜7 本で MEDIUM、2 本以下で HIGH。根拠がすべて公開 48 時間未満なら 1 段階上げる。理由の一覧を必ず付ける |
+| Originality Score | 同上 `computeOriginalityScore()` | 既存動画ごとに 類似度 = 0.4 × 文字 2-gram の Jaccard（`ngramJaccard()`、NFKC 正規化・記号除去）+ 0.6 × Claude の内容類似度。100 × (1 − 最大類似度) + 差別化 1 つにつき 2 点（上限 10）。コピーリスクは最大類似度 0.7 以上で HIGH、0.45 以上で MEDIUM。企画生成（#9）で使う |
+| 断定表現のチェック | 同上 `findOverclaims()` | 「必ず / 絶対に / 確実に / 100% + バズる・伸びる・稼げる…」「〜は保証」などを検出 |
+| トレンド分析のプロンプト | `packages/orchestrator/src/tasks/trend-analysis.ts` | system（役割・ルール・外部データの扱い）とチャンネル設定はキャッシュ対象。市場データ（再生速度の高い順に最大 80 本、Shorts と推定される動画を優先）は `<external_data>` で渡す。effort は high |
+| トレンド分析ジョブ | `apps/worker/src/jobs/trend-analysis.ts` | Claude が挙げたテーマのうち、入力データで根拠を確認できる動画だけを使ってスコアを計算し `market_trends` に保存 → 企画生成へ。断定表現があれば 1 回だけ書き直しを求め、残れば `OVERCLAIM` で失敗 |
+| API | `GET /api/v1/research-runs/:id/trends` | スコアの高い順。内訳・使ったデータ・不確実性・リスク・根拠の動画と、「保証ではない」「YouTube 以外の SNS は推定」の注意書きを返す |
