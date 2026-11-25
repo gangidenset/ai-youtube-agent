@@ -64,7 +64,7 @@ describe.runIf(databaseUrl && redisUrl)("queue (integration)", () => {
 
   // ジョブ処理は、他のテストが同じ DB に作ったジョブも拾うことがある。
   // 呼び出し回数を数えるハンドラは、このテストのジョブ（idempotencyKey）だけを数える
-    function start(handlers: JobHandlers) {
+  function start(handlers: JobHandlers) {
     runtime = startQueueRuntime({
       prisma,
       redisUrl: redisUrl ?? "",
