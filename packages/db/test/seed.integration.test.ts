@@ -10,6 +10,7 @@ if (process.env["CI"] && !databaseUrl) throw new Error("CI では DATABASE_URL �
 describe.runIf(databaseUrl)("seed (integration)", () => {
   const prisma = createPrismaClient(databaseUrl ?? "");
   const email = `owner-${randomUUID()}@example.com`;
+  const password = `test-password-${randomUUID()}`;
 
   afterAll(async () => {
     const user = await prisma.user.findUnique({ where: { email } });
@@ -20,14 +21,18 @@ describe.runIf(databaseUrl)("seed (integration)", () => {
     await prisma.$disconnect();
   });
 
+  it("requires a password to create the owner", async () => {
+    await expect(runSeed(prisma, { ownerEmail: email })).rejects.toThrow(/SEED_OWNER_PASSWORD/);
+    expect(await prisma.user.findUnique({ where: { email } })).toBeNull();
+  });
+
   it("creates the owner, sample channel with ADR defaults, and pricing", async () => {
-    const first = await runSeed(prisma, { ownerEmail: email });
+    const first = await runSeed(prisma, { ownerEmail: email, ownerPassword: password });
     expect(first.createdOwner).toBe(true);
-    expect(first.generatedPassword).toBeDefined();
 
     const owner = await prisma.user.findUniqueOrThrow({ where: { email } });
     expect(owner.passwordHash.startsWith("$argon2id$")).toBe(true);
-    expect(await verifyPassword(owner.passwordHash, first.generatedPassword ?? "")).toBe(true);
+    expect(await verifyPassword(owner.passwordHash, password)).toBe(true);
 
     const channel = await prisma.channel.findUniqueOrThrow({
       where: { id: first.channelId },
@@ -53,7 +58,6 @@ describe.runIf(databaseUrl)("seed (integration)", () => {
 
     const second = await runSeed(prisma, { ownerEmail: email, ownerPassword: "another-password-123" });
     expect(second.createdOwner).toBe(false);
-    expect(second.generatedPassword).toBeUndefined();
 
     const after = await prisma.user.findUniqueOrThrow({ where: { email } });
     expect(after.passwordHash).toBe(before.passwordHash);

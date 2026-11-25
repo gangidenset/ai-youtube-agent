@@ -26,5 +26,5 @@ const lines = readFileSync(`${root}.env.example`, "utf8")
 
 writeFileSync(target, lines.join("\n"), { mode: 0o600 });
 console.log(
-  ".env を作成しました（SESSION_SECRET と TOKEN_ENCRYPTION_KEY を生成）。API キーは必要に応じて追記してください。",
+  ".env を作成しました（SESSION_SECRET と TOKEN_ENCRYPTION_KEY を生成）。SEED_OWNER_PASSWORD（初期 OWNER のパスワード）と API キーは必要に応じて追記してください。",
 );

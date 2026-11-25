@@ -15,10 +15,9 @@ try {
     ownerEmail: process.env["SEED_OWNER_EMAIL"] ?? "owner@example.com",
     ownerPassword: process.env["SEED_OWNER_PASSWORD"] || undefined,
   });
-  console.log(`seed 完了: channel=${result.channelId}, provider_pricing=${result.pricingRows} 件`);
-  if (result.generatedPassword) {
-    console.log(`初期 OWNER を作成しました。パスワード（この表示は一度だけ）: ${result.generatedPassword}`);
-  }
+  console.log(
+    `seed 完了: OWNER ${result.createdOwner ? "を作成" : "は既存"}, channel=${result.channelId}, provider_pricing=${result.pricingRows} 件`,
+  );
 } finally {
   await prisma.$disconnect();
 }

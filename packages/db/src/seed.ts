@@ -1,4 +1,3 @@
-import { randomBytes } from "node:crypto";
 import type { PrismaClient } from "./client";
 import { PricingUnit } from "./generated/prisma/enums";
 import { hashPassword } from "./password";
@@ -110,7 +109,7 @@ export const SEED_PRICING: {
 
 export interface SeedOptions {
   ownerEmail: string;
-  /** 省略時はランダム生成し、結果の generatedPassword で返す（ログに一度だけ出す用途） */
+  /** OWNER を新規作成するときに必須。既存の OWNER のパスワードは変更しない。ログには出さない。 */
   ownerPassword?: string;
 }
 
@@ -119,20 +118,22 @@ export interface SeedResult {
   channelId: string;
   pricingRows: number;
   createdOwner: boolean;
-  generatedPassword?: string;
 }
 
 /** 開発用の初期データ。何度実行しても同じ状態になる（既存の OWNER のパスワードは変更しない）。 */
 export async function runSeed(prisma: PrismaClient, options: SeedOptions): Promise<SeedResult> {
   const email = options.ownerEmail.trim().toLowerCase();
   let owner = await prisma.user.findUnique({ where: { email } });
-  let generatedPassword: string | undefined;
   const createdOwner = !owner;
 
   if (!owner) {
-    const password = options.ownerPassword ?? (generatedPassword = randomBytes(18).toString("base64url"));
+    if (!options.ownerPassword) {
+      throw new Error(
+        "初期 OWNER を作成するには SEED_OWNER_PASSWORD（12 文字以上）を .env に設定してください",
+      );
+    }
     owner = await prisma.user.create({
-      data: { email, displayName: "Owner", passwordHash: await hashPassword(password) },
+      data: { email, displayName: "Owner", passwordHash: await hashPassword(options.ownerPassword) },
     });
   }
 
@@ -172,6 +173,5 @@ export async function runSeed(prisma: PrismaClient, options: SeedOptions): Promi
     channelId,
     pricingRows: SEED_PRICING.length,
     createdOwner,
-    ...(generatedPassword ? { generatedPassword } : {}),
   };
 }

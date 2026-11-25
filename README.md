@@ -82,6 +82,8 @@ PostgreSQL / Redis / MinIO を docker compose で起動します（`127.0.0.1` �
 pnpm db:migrate && pnpm db:seed
 ```
 
+初回の `pnpm db:seed` の前に、`.env` の `SEED_OWNER_PASSWORD` に初期 OWNER のパスワード（12 文字以上）を設定してください。
+
 ```bash
 pnpm dev
 ```
@@ -121,7 +123,7 @@ pnpm dev
 - スキーマ: `packages/db/prisma/schema.prisma`（Prisma 7）
 - マイグレーション: `pnpm db:migrate`（開発。スキーマ変更からマイグレーションを作成して適用）/ `pnpm db:deploy`（本番。手動承認付きパイプラインで実行）
 - シード: `pnpm db:seed`（開発専用。初期 OWNER・サンプルチャンネル・Provider 単価を投入。何度実行しても同じ状態になる）
-  - OWNER のメールは `SEED_OWNER_EMAIL`（既定 `owner@example.com`）、パスワードは `SEED_OWNER_PASSWORD`。未指定ならランダム生成して一度だけ表示します
+  - OWNER のメールは `SEED_OWNER_EMAIL`（既定 `owner@example.com`）、パスワードは `SEED_OWNER_PASSWORD`（12 文字以上）。初回は `.env` に自分で設定してください（パスワードはログに出しません）
 
 ## 起動方法
 
