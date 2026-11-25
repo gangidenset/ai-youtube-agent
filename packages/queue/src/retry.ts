@@ -49,6 +49,15 @@ export class RetryLaterError extends Error {
   }
 }
 
+/**
+ * やり直しても結果が変わらない失敗か。NonRetryableError に加え、外部サービスの Adapter が
+ * retryable=false を付けた失敗（packages/providers の ProviderError など）も対象にする。
+ */
+export function isNonRetryable(err: unknown): boolean {
+  if (err instanceof NonRetryableError) return true;
+  return typeof err === "object" && err !== null && "retryable" in err && err.retryable === false;
+}
+
 export function errorCodeOf(err: unknown): string {
   if (err instanceof NonRetryableError) return err.code;
   if (err instanceof Error && "code" in err && typeof err.code === "string") return err.code;

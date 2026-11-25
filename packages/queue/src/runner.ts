@@ -6,6 +6,7 @@ import {
   DEFAULT_RETRY_POLICY,
   errorCodeOf,
   errorMessageOf,
+  isNonRetryable,
   NonRetryableError,
   RetryLaterError,
   type RetryPolicy,
@@ -107,7 +108,7 @@ export class JobRunner {
       return { status: "SUCCEEDED" };
     } catch (err) {
       const attempt = job.retryCount + 1;
-      const retryable = !(err instanceof NonRetryableError) && attempt < job.maxAttempts;
+      const retryable = !isNonRetryable(err) && attempt < job.maxAttempts;
       const common = { errorCode: errorCodeOf(err), errorMessage: errorMessageOf(err) };
       if (!retryable) {
         await this.prisma.workflowJob.updateMany({

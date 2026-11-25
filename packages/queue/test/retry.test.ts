@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   computeBackoffMs,
+  isNonRetryable,
+  NonRetryableError,
   DEFAULT_RETRY_POLICY,
   isJobType,
   JOB_DEFINITIONS,
@@ -51,5 +53,14 @@ describe("job definitions", () => {
     expect(isJobType("generate_script")).toBe(true);
     expect(isJobType("toString")).toBe(false);
     expect(isJobType("upload_youtube")).toBe(false);
+  });
+});
+
+describe("isNonRetryable", () => {
+  it("treats NonRetryableError and errors marked retryable=false as final", () => {
+    expect(isNonRetryable(new NonRetryableError("X", "x"))).toBe(true);
+    expect(isNonRetryable(Object.assign(new Error("auth"), { retryable: false }))).toBe(true);
+    expect(isNonRetryable(Object.assign(new Error("503"), { retryable: true }))).toBe(false);
+    expect(isNonRetryable(new Error("plain"))).toBe(false);
   });
 });
