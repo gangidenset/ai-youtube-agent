@@ -183,14 +183,18 @@ enum LogCategory {
 // ---------------------------------------------------------------- 認証・組織
 
 model User {
-  id           String     @id @default(uuid(7)) @db.Uuid
-  email        String     @unique
-  passwordHash String     @map("password_hash")
-  displayName  String     @map("display_name")
-  status       UserStatus @default(ACTIVE)
-  lastLoginAt  DateTime?  @map("last_login_at") @db.Timestamptz
-  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+  id               String     @id @default(uuid(7)) @db.Uuid
+  email            String     @unique
+  passwordHash     String     @map("password_hash")
+  displayName      String     @map("display_name")
+  status           UserStatus @default(ACTIVE)
+  lastLoginAt      DateTime?  @map("last_login_at") @db.Timestamptz
+  /// 連続ログイン失敗回数（成功でリセット）
+  failedLoginCount Int        @default(0) @map("failed_login_count")
+  /// この時刻までログインを拒否する（連続失敗によるロック）
+  lockedUntil      DateTime?  @map("locked_until") @db.Timestamptz
+  createdAt        DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime   @updatedAt @map("updated_at") @db.Timestamptz
 
   sessions        Session[]
   memberships     ChannelMember[]
@@ -204,17 +208,18 @@ model User {
 }
 
 model Session {
-  id            String    @id @default(uuid(7)) @db.Uuid
-  userId        String    @map("user_id") @db.Uuid
-  /// トークンはハッシュのみ保存する（docs/security.md）
-  tokenHash     String    @unique @map("token_hash")
-  csrfTokenHash String    @map("csrf_token_hash")
-  ip            String?
-  userAgent     String?   @map("user_agent")
-  expiresAt     DateTime  @map("expires_at") @db.Timestamptz
-  revokedAt     DateTime? @map("revoked_at") @db.Timestamptz
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  id         String    @id @default(uuid(7)) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  /// トークンはハッシュのみ保存する（docs/security.md）。CSRF トークンはセッショントークンから HMAC で導出するので保存しない
+  tokenHash  String    @unique @map("token_hash")
+  /// アイドルタイムアウトの判定に使う
+  lastSeenAt DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz
+  ip         String?
+  userAgent  String?   @map("user_agent")
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

@@ -11,7 +11,9 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1 };
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="ja">
-      <body style={{ fontFamily: "system-ui, sans-serif", margin: 0, padding: 16 }}>{children}</body>
+      <body style={{ fontFamily: "system-ui, sans-serif", margin: 0, padding: 16, background: "#f6f8fa" }}>
+        {children}
+      </body>
     </html>
   );
 }

@@ -9,7 +9,7 @@
 | 項目 | 仕様 |
 |------|------|
 | 認証 | `sid` Cookie（httpOnly / Secure / SameSite=Lax） |
-| CSRF | 状態変更メソッドは `X-CSRF-Token` ヘッダ必須 + `Origin` 検証 |
+| CSRF | 状態変更メソッドは `Origin` 検証 + ログイン中は `X-CSRF-Token` ヘッダ必須（トークンは `/auth/login` と `/auth/me` の応答に含まれる） |
 | 冪等性 | ジョブを起動する POST は `Idempotency-Key` ヘッダ必須（24h 保持） |
 | 非同期 | 長時間処理は `202 Accepted` + `{ jobId, entityId }` を返す。進捗は GET ポーリング or `GET /events`（SSE） |
 | ページング | `?cursor=&limit=`（最大 100） |

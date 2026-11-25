@@ -44,6 +44,11 @@ export const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   APP_BASE_URL: z.preprocess((v) => (v === "" ? undefined : v), z.url().default("http://localhost:3000")),
   API_PORT: positiveNumber(4000).pipe(z.number().int().max(65535)),
+  /** リバースプロキシの段数（X-Forwarded-For を何段まで信用するか）。0 = 信用しない */
+  TRUST_PROXY_HOPS: z.preprocess(
+    (v) => (v === "" || v === undefined ? 0 : Number(v)),
+    z.number().int().min(0).max(5),
+  ),
   DEFAULT_LANGUAGE: z.preprocess((v) => (v === "" ? undefined : v), z.string().default("ja")),
   DEFAULT_REGION: z.preprocess((v) => (v === "" ? undefined : v), z.string().default("JP")),
 

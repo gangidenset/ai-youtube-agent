@@ -29,9 +29,9 @@
 ## 認証・セッション
 
 - パスワード: argon2id（メモリ 64MB 以上）、最低 12 文字、漏洩パスワードリスト照合（任意）
-- セッション: ランダム 256bit トークン、DB にはハッシュのみ保存。Cookie は `httpOnly; Secure; SameSite=Lax; Path=/`
+- セッション: ランダム 256bit トークン、DB には SHA-256 ハッシュのみ保存。Cookie（`aya_sid`）は `httpOnly; Secure（本番）; SameSite=Lax; Path=/`。ログインのたびに新しいトークンを発行する（セッション固定攻撃の防止）
 - 有効期限: アイドル 12h / 絶対 7d。パスワード変更・ロール変更時は全セッション失効
-- ログイン試行: IP + アカウント単位で Rate Limit、連続失敗で一時ロック、監査ログ記録
+- ログイン試行: IP ごとに 1 分 5 回（Rate Limit、Redis で共有）、アカウントは連続 10 回失敗で 15 分ロック、成功・失敗を `system_logs`（AUTH）に記録（パスワードは記録しない）。失敗理由（存在しないアカウント・パスワード違い・ロック中）は区別せず同じエラーを返し、存在しないアカウントでもダミーのハッシュ検証を行って応答時間をそろえる
 - Phase 6: TOTP 2FA（OWNER は必須化）
 
 ## 認可
@@ -43,7 +43,7 @@
 
 | 脅威 | 対策 |
 |------|------|
-| CSRF | SameSite=Lax + 状態変更 API に CSRF トークン（セッション紐付け）+ `Origin`/`Referer` 検証 |
+| CSRF | SameSite=Lax + 状態変更 API（POST/PUT/PATCH/DELETE）は `Origin`（無ければ `Referer`）が `APP_BASE_URL` と一致することを必須にし、ログイン中は `X-CSRF-Token` も検証。CSRF トークンは `HMAC(SESSION_SECRET, セッショントークン)` で導出する（DB に保存せず `/auth/me` で再取得できる） |
 | XSS | React の自動エスケープ、`dangerouslySetInnerHTML` を ESLint で禁止、CSP（`default-src 'self'`、nonce）、AI 生成テキスト・外部動画タイトルもエスケープ表示 |
 | SQL Injection | Prisma のパラメータ化クエリのみ。`$queryRawUnsafe` を ESLint で禁止 |
 | SSRF | Provider の取得 URL は許可ドメインのみ。ユーザー入力 URL を Worker が直接取得しない |

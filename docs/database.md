@@ -60,8 +60,8 @@ erDiagram
 
 | テーブル | 主要カラム |
 |------|------|
-| `users` | email (unique), password_hash (argon2id), display_name, status, last_login_at, mfa_secret_enc (Phase 6) |
-| `sessions` ★ | user_id, token_hash, csrf_token_hash, ip, user_agent, expires_at, revoked_at |
+| `users` | email (unique), password_hash (argon2id), display_name, status, last_login_at, failed_login_count, locked_until（連続失敗によるロック）, mfa_secret_enc (Phase 6) |
+| `sessions` ★ | user_id, token_hash, last_seen_at（アイドルタイムアウト）, ip, user_agent, expires_at, revoked_at ※ CSRF トークンはセッショントークンから HMAC で導出するので保存しない |
 | `channel_members` ★ | channel_id, user_id, role (`OWNER` / `EDITOR` / `APPROVER` / `VIEWER`) |
 
 ### チャンネル

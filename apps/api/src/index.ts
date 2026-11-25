@@ -1,24 +1,29 @@
 import { ConfigError, loadConfig } from "@aya/config";
+import { createPrismaClient } from "@aya/db";
+import { Redis } from "ioredis";
 import { buildServer } from "./server";
 
-function start() {
+async function start() {
   const config = loadConfig();
-  const app = buildServer({ logger: true });
+  const prisma = createPrismaClient(config.env.DATABASE_URL);
+  const redis = new Redis(config.env.REDIS_URL, { maxRetriesPerRequest: 1, enableOfflineQueue: false });
+  const app = await buildServer({ config, prisma, rateLimitRedis: redis, logger: true });
+
   for (const warning of config.providers.warnings) app.log.warn(warning);
   app.log.info({ providers: { ...config.providers, warnings: undefined } }, "provider plan");
 
-  app.listen({ port: config.env.API_PORT, host: "0.0.0.0" }).catch((err: unknown) => {
-    app.log.error(err);
-    process.exit(1);
-  });
+  const shutdown = async () => {
+    await app.close();
+    await prisma.$disconnect();
+    redis.disconnect();
+  };
+  process.once("SIGTERM", () => void shutdown().then(() => process.exit(0)));
+  process.once("SIGINT", () => void shutdown().then(() => process.exit(0)));
+
+  await app.listen({ port: config.env.API_PORT, host: "0.0.0.0" });
 }
 
-try {
-  start();
-} catch (err) {
-  if (err instanceof ConfigError) {
-    console.error(err.message);
-    process.exit(1);
-  }
-  throw err;
-}
+start().catch((err: unknown) => {
+  console.error(err instanceof ConfigError ? err.message : err);
+  process.exit(1);
+});
