@@ -22,6 +22,8 @@ export interface EnqueueRequest {
   projectId?: string;
   researchRunId?: string;
   priority?: number;
+  /** この時刻まで実行しない（例: クォータ不足で翌日に延期） */
+  runAt?: Date;
 }
 
 /**
@@ -42,6 +44,7 @@ export async function enqueueJob(
       idempotencyKey: req.idempotencyKey,
       maxAttempts: jobDefinition(req.jobType).maxAttempts,
       priority: req.priority ?? 0,
+      nextRunAt: req.runAt ?? null,
       channelId: req.channelId ?? null,
       projectId: req.projectId ?? null,
       researchRunId: req.researchRunId ?? null,

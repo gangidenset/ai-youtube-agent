@@ -3,3 +3,8 @@ export * from "./claude/types";
 export * from "./claude/external-data";
 export * from "./claude/anthropic";
 export * from "./claude/mock";
+export * from "./youtube/types";
+export * from "./youtube/data-api";
+export * from "./youtube/mock";
+export * from "./youtube/guarded";
+export * from "./cache/redis";

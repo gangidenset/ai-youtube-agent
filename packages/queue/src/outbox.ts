@@ -53,6 +53,8 @@ export class OutboxRelay {
               attempts: def.maxAttempts,
               backoff: { type: "custom" },
               priority: Math.max(0, Math.min(2_097_152, job?.priority ?? 0)),
+              // next_run_at が未来なら、その時刻まで待ってから実行する
+              delay: Math.max(0, (job?.nextRunAt?.getTime() ?? 0) - Date.now()),
               removeOnComplete: 1000,
               removeOnFail: 5000,
             },

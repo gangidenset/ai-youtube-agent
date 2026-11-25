@@ -12,6 +12,7 @@ import { SessionStore } from "./auth/session";
 import { registerErrorHandler } from "./errors";
 import { authRoutes } from "./routes/auth";
 import { platformTargetRoutes } from "./routes/platform-targets";
+import { researchRunRoutes } from "./routes/research-runs";
 
 export interface ServerDeps {
   config: AppConfig;
@@ -62,6 +63,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     secureCookie,
   });
   await platformTargetRoutes(app, deps.platforms ?? createDefaultRegistry());
+  await researchRunRoutes(app, deps.prisma);
 
   return app;
 }

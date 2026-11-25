@@ -17,6 +17,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.14.0",
+    "@aya/core": "workspace:*",
+    "ioredis": "^6.1.0",
     "zod": "^4.6.7"
   }
 }

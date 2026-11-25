@@ -259,6 +259,30 @@ describe.runIf(databaseUrl && redisUrl)("queue (integration)", () => {
     });
   });
 
+  it("delays jobs scheduled for later (runAt)", async () => {
+    const prefix = `aya-test-${runId}-delay`;
+    const queue = new Queue("youtube", {
+      connection: { url: redisUrl ?? "", maxRetriesPerRequest: null },
+      prefix,
+    });
+    try {
+      const runAt = new Date(Date.now() + 60 * 60_000);
+      const { job } = await enqueueJobOnce(prisma, {
+        jobType: "market_research",
+        idempotencyKey: key("delayed"),
+        runAt,
+      });
+      expect(job.nextRunAt?.getTime()).toBe(runAt.getTime());
+      await new OutboxRelay(prisma, new Map([["youtube", queue]])).pollOnce();
+      const queued = await queue.getJob(job.id);
+      expect(await queued?.getState()).toBe("delayed");
+      expect(queued?.opts.delay).toBeGreaterThan(59 * 60_000);
+    } finally {
+      await queue.obliterate({ force: true });
+      await queue.close();
+    }
+  });
+
   it("keeps relayed jobs unique in BullMQ even if the relay runs twice", async () => {
     const prefix = `aya-test-${runId}-relay`;
     const queue = new Queue("llm", {

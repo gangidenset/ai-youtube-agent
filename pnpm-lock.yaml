@@ -53,6 +53,9 @@ importers:
       '@aya/platforms':
         specifier: workspace:*
         version: link:../../packages/platforms
+      '@aya/queue':
+        specifier: workspace:*
+        version: link:../../packages/queue
       '@fastify/cookie':
         specifier: ^11.1.5
         version: 11.1.5
@@ -71,6 +74,9 @@ importers:
       '@prisma/client':
         specifier: ^7.10.1
         version: 7.10.1(prisma@7.10.1(@types/node@22.20.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(magicast@0.5.5)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@6.0.3))(typescript@6.0.3)
+      bullmq:
+        specifier: ^6.7.10
+        version: 6.7.10(ioredis@6.1.0)(pg@8.23.1)
       fastify:
         specifier: ^5.12.8
         version: 5.12.8
@@ -127,15 +133,24 @@ importers:
 
   apps/worker:
     dependencies:
+      '@anthropic-ai/sdk':
+        specifier: ^1.14.0
+        version: 1.14.0(zod@4.6.7)
       '@aya/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@aya/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@aya/db':
         specifier: workspace:*
         version: link:../../packages/db
       '@aya/platforms':
         specifier: workspace:*
         version: link:../../packages/platforms
+      '@aya/providers':
+        specifier: workspace:*
+        version: link:../../packages/providers
       '@aya/queue':
         specifier: workspace:*
         version: link:../../packages/queue
@@ -151,6 +166,12 @@ importers:
       bullmq:
         specifier: ^6.7.10
         version: 6.7.10(ioredis@6.1.0)(pg@8.23.1)
+      ioredis:
+        specifier: ^6.1.0
+        version: 6.1.0
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       '@types/node':
         specifier: ^22.20.5
@@ -201,6 +222,9 @@ importers:
       '@aya/config':
         specifier: workspace:*
         version: link:../config
+      '@aya/core':
+        specifier: workspace:*
+        version: link:../core
       '@node-rs/argon2':
         specifier: ^2.2.2
         version: 2.2.2
@@ -211,9 +235,6 @@ importers:
         specifier: ^7.10.1
         version: 7.10.1(prisma@7.10.1(@types/node@22.20.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(magicast@0.5.5)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@6.0.3))(typescript@6.0.3)
     devDependencies:
-      '@aya/core':
-        specifier: workspace:*
-        version: link:../core
       '@aya/platforms':
         specifier: workspace:*
         version: link:../platforms
@@ -279,6 +300,12 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^1.14.0
         version: 1.14.0(zod@4.6.7)
+      '@aya/core':
+        specifier: workspace:*
+        version: link:../core
+      ioredis:
+        specifier: ^6.1.0
+        version: 6.1.0
       zod:
         specifier: ^4.6.7
         version: 4.6.7
