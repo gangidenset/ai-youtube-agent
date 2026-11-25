@@ -16,8 +16,24 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      # CI 専用の使い捨て DB（認証情報もこのジョブ内だけで使う固定値）
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: aya
+          POSTGRES_PASSWORD: aya
+          POSTGRES_DB: aya
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aya -d aya"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     env:
       NEXT_TELEMETRY_DISABLED: "1"
+      DATABASE_URL: postgresql://aya:aya@localhost:5432/aya
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v5
@@ -31,6 +47,11 @@ jobs:
         run: pnpm lint
       - name: Type Check
         run: pnpm typecheck
+      - name: DB Migrate
+        run: pnpm db:deploy
+      - name: DB Drift Check
+        # マイグレーション適用後の DB と schema.prisma に差分が無いこと
+        run: pnpm --filter @aya/db exec prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
       - name: Unit Test
         run: pnpm test
       - name: Build

@@ -1,6 +1,8 @@
 # データベース設計
 
-PostgreSQL 16 / Prisma。
+PostgreSQL 16 / Prisma 7（`packages/db/prisma/schema.prisma`、driver adapter は `@prisma/adapter-pg`）。
+
+> 実装状況: Phase 1 のテーブル（下表のうち Phase 2 以降の `video_generations` / `voice_generations` / `render_jobs` / `generated_assets` / `youtube_uploads` / `video_performance` / `success_patterns` を除く 28 テーブル）を Issue #3 で実装済み。Phase 2 以降のテーブルは各 Issue で追加する。
 
 ## 共通ルール
 
@@ -83,8 +85,8 @@ erDiagram
 
 | テーブル | 主要カラム |
 |------|------|
-| `video_ideas` | research_run_id, channel_id, label (`A`/`B`/`C`), title, theme, target, hook, story, duration_sec, scene_count, cta, trend_score, originality_score, score_rationale (jsonb), similar_videos (jsonb), copy_risk, risks (jsonb), status (`PROPOSED`/`SELECTED`/`DISCARDED`) |
-| `video_projects` | channel_id, idea_id, code (`VP-0001`), format, state, current_script_version, current_render_id, total_cost_usd, paused_reason, failed_reason |
+| `video_ideas` | research_run_id, channel_id, label (`A`/`B`/`C`), title, theme, target, hook, story, duration_sec, scene_count, cta, trend_score, originality_score, score_rationale (jsonb), similar_videos (jsonb), copy_risk, policy_risk（AUTO_TOP の採用条件に使用）, risks (jsonb), status (`PROPOSED`/`SELECTED`/`DISCARDED`) |
+| `video_projects` | channel_id, idea_id, code (`VP-0001`), format, state, resume_state（PAUSED / FAILED から戻る先）, current_script_version, current_render_id, total_cost_usd, paused_reason, failed_reason |
 | `scripts` | project_id, version, parent_version, content (jsonb：§17 の台本 JSON), schema_version, created_by (`AI`/`USER`), revision_id ※(project_id, version) unique |
 | `video_scenes` | script_id, scene_number, priority（`CORE`/`OPTIONAL`：尺の短い Target で省略可能）, duration_sec, visual_prompt, narration, subtitle, sound_effect, transition |
 | `project_revisions` ★ | project_id, from_version, to_version, instruction（例: 「冒頭を強く」）, requested_by, diff_summary (jsonb) |
@@ -121,7 +123,7 @@ erDiagram
 |------|------|
 | `workflow_jobs` | job_type, channel_id, project_id, research_run_id, idempotency_key (unique), status (`QUEUED`/`RUNNING`/`SUCCEEDED`/`FAILED`/`CANCELLED`/`WAITING_EXTERNAL`), priority, attempt / retry_count, max_attempts, started_at, completed_at, heartbeat_at, next_run_at, error_code, error_message, cost_usd, input (jsonb), output_ref |
 | `workflow_transitions` ★ | entity_type (`RESEARCH_RUN`/`PROJECT`), entity_id, from_state, to_state, trigger (`JOB`/`USER`/`AI_DECISION`/`SYSTEM`), actor_id, job_id, decision_id |
-| `outbox_events` ★ | event_type, payload (jsonb), published_at ※状態更新と同一トランザクションで挿入 |
+| `outbox_events` ★ | event_type, payload (jsonb), published_at, attempts ※状態更新と同一トランザクションで挿入 |
 | `ai_decisions` ★ | channel_id, project_id, research_run_id, state, next_action, reason, confidence, parameters (jsonb), data_refs[], accepted (bool), rejected_reason（ガードで拒否された場合）, model, prompt_version, request_id |
 | `ai_costs` | job_id, channel_id, project_id, provider, model, operation, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, units（秒・文字数など）, unit_type, cost_usd, estimated (bool), latency_ms, request_id |
 | `api_quota_usage` ★ | provider, quota_bucket（例: `youtube:projectX`）, date (PT 基準), units_used, units_limit |

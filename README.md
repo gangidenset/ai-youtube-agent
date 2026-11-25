@@ -56,7 +56,7 @@ TypeScript / pnpm + Turborepo / Next.js / Fastify / BullMQ + Redis / PostgreSQL 
 
 ## セットアップ
 
-> 現在使えるもの: install / env:init / infra:up / lint / typecheck / test / build / dev（web・api・worker）。DB スキーマとマイグレーションは Issue #3 で追加します。
+> 現在使えるもの: install / env:init / infra:up / db:migrate / db:seed / lint / typecheck / test / build / dev（web・api・worker）。
 
 ```bash
 git clone https://github.com/gangidenset/ai-youtube-agent.git
@@ -77,6 +77,10 @@ pnpm infra:up
 ```
 
 PostgreSQL / Redis / MinIO を docker compose で起動します（`127.0.0.1` のみに公開、停止は `pnpm infra:down`）。
+
+```bash
+pnpm db:migrate && pnpm db:seed
+```
 
 ```bash
 pnpm dev
@@ -114,9 +118,10 @@ pnpm dev
 
 ## DB 構築
 
-- スキーマ: `packages/db/prisma/schema.prisma`
-- マイグレーション: `pnpm db:migrate`（開発）/ `pnpm db:deploy`（本番、手動承認付きパイプライン）
-- シード: `pnpm db:seed`（初期 OWNER ユーザー・サンプルチャンネル）
+- スキーマ: `packages/db/prisma/schema.prisma`（Prisma 7）
+- マイグレーション: `pnpm db:migrate`（開発。スキーマ変更からマイグレーションを作成して適用）/ `pnpm db:deploy`（本番。手動承認付きパイプラインで実行）
+- シード: `pnpm db:seed`（開発専用。初期 OWNER・サンプルチャンネル・Provider 単価を投入。何度実行しても同じ状態になる）
+  - OWNER のメールは `SEED_OWNER_EMAIL`（既定 `owner@example.com`）、パスワードは `SEED_OWNER_PASSWORD`。未指定ならランダム生成して一度だけ表示します
 
 ## 起動方法
 
