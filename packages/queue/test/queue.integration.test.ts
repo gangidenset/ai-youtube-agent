@@ -62,7 +62,9 @@ describe.runIf(databaseUrl && redisUrl)("queue (integration)", () => {
     await prisma.$disconnect();
   });
 
-  function start(handlers: JobHandlers) {
+  // ジョブ処理は、他のテストが同じ DB に作ったジョブも拾うことがある。
+  // 呼び出し回数を数えるハンドラは、このテストのジョブ（idempotencyKey）だけを数える
+    function start(handlers: JobHandlers) {
     runtime = startQueueRuntime({
       prisma,
       redisUrl: redisUrl ?? "",
@@ -100,6 +102,7 @@ describe.runIf(databaseUrl && redisUrl)("queue (integration)", () => {
     const seen: unknown[] = [];
     start({
       generate_script: async (ctx) => {
+        if (ctx.job.idempotencyKey !== key("success")) return {};
         seen.push(ctx.input);
         return { outputRef: "script:v1", costUsd: 0.14 };
       },
@@ -127,7 +130,8 @@ describe.runIf(databaseUrl && redisUrl)("queue (integration)", () => {
   it("retries retryable failures with backoff and then succeeds", async () => {
     let calls = 0;
     start({
-      trend_analysis: async () => {
+      trend_analysis: async (ctx) => {
+        if (ctx.job.idempotencyKey !== key("retry")) return {};
         calls++;
         if (calls === 1) throw new Error("upstream 503");
         return {};
@@ -145,8 +149,8 @@ describe.runIf(databaseUrl && redisUrl)("queue (integration)", () => {
   it("fails immediately on non-retryable errors and after max attempts otherwise", async () => {
     let calls = 0;
     start({
-      generate_idea: async () => {
-        calls++;
+      generate_idea: async (ctx) => {
+        if (ctx.job.idempotencyKey === key("nonretry")) calls++;
         throw new NonRetryableError("INVALID_INPUT", "企画の入力が不正です");
       },
       revise: async () => {
